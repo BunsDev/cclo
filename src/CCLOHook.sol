@@ -1,36 +1,45 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.25;
+pragma solidity ^0.8.0;
 
-import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
-import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
-import {Hooks} from "@uniswap/v4-core/src/libraries/Hooks.sol";
+import {IPoolManager} from "v4-core/src/interfaces/IPoolManager.sol";
+import {PoolManager} from "v4-core/src/PoolManager.sol";
+import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 import {BaseHook} from "v4-periphery/src/base/hooks/BaseHook.sol";
-import {SafeCast} from "@uniswap/v4-core/src/libraries/SafeCast.sol";
-import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
-import {CurrencyLibrary, Currency} from "@uniswap/v4-core/src/types/Currency.sol";
-import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
-import {BalanceDelta} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {IERC20Minimal} from "@uniswap/v4-core/src/interfaces/external/IERC20Minimal.sol";
-import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
-import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
-import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
-import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
-import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
-import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
-import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "@uniswap/v4-core/src/types/BeforeSwapDelta.sol";
+import {SafeCast} from "v4-core/src/libraries/SafeCast.sol";
+import {IHooks} from "v4-core/src/interfaces/IHooks.sol";
+import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
+import {CurrencySettler} from "v4-core/test/utils/CurrencySettler.sol";
+import {TickMath} from "v4-core/src/libraries/TickMath.sol";
+import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
+import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
+import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
+import {PoolKey} from "v4-core/src/types/PoolKey.sol";
+import {FullMath} from "v4-core/src/libraries/FullMath.sol";
+import {FixedPoint96} from "v4-core/src/libraries/FixedPoint96.sol";
+import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.sol";
+import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeSwapDelta.sol";
 import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
 
 
-contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
+
+contract CCLOHook is CCIPReceiver, BaseHook {
     using CurrencyLibrary for Currency;
+    using CurrencySettler for Currency;
     using PoolIdLibrary for PoolKey;
     using SafeCast for uint256;
     using SafeCast for uint128;
     using StateLibrary for IPoolManager;
-    
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // CCIP
     ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Constants
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    bytes internal constant ZERO_BYTES = bytes("");
 
     // Custom errors to provide more descriptive revert messages.
     error NoMessageReceived(); // Used when trying to access a message but no messages have been received.
@@ -83,10 +92,33 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
     uint256 public hookChainId;
 
     // Mapping of strategy IDs to their respective liquidity distributions
-    mapping(uint256 => Strategy) public strategies;
+    mapping(PoolId => mapping(uint256 => Strategy)) internal strategies;
 
-    // Mapping of pool IDs to their respective cross-chain orders
-    mapping(PoolId => CrossChainOrder) public ordersToBeFilled;
+    event Log(string message);
+    event Log2(uint256 message);
+    event Log3(int128 message);
+
+    //    // Mapping of pool IDs to their respective cross-chain orders
+    //    mapping(PoolId => CrossChainOrder) public ordersToBeFilled;
+
+    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
+        return Hooks.Permissions({
+            beforeInitialize: false,
+            afterInitialize: false,
+            beforeAddLiquidity: true,
+            afterAddLiquidity: false,
+            beforeRemoveLiquidity: false,
+            afterRemoveLiquidity: false,
+            beforeSwap: false,
+            afterSwap: false,
+            beforeDonate: false,
+            afterDonate: false,
+            beforeSwapReturnDelta: false,
+            afterSwapReturnDelta: false,
+            afterAddLiquidityReturnDelta: false,
+            afterRemoveLiquidityReturnDelta: false
+        });
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Structs
@@ -97,11 +129,11 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
         PoolId poolId, uint256 token0Amount, uint256 token1Amount, int24 lowerTick, int24 upperTick
     );
 
-    // Event emitted when a cross-chain order is fulfilled
-    event CrossChainOrderFulfilled(PoolId poolId);
+    //    // Event emitted when a cross-chain order is fulfilled
+    //    event CrossChainOrderFulfilled(PoolId poolId);
 
     // Event emitted when a new strategy is added
-    event StrategyAdded(uint256 strategyId, uint256[] chainIds, uint256[] liquidityPercentages);
+    event StrategyAdded(PoolId poolId, uint256 strategyId, uint256[] chainIds, uint256[] liquidityPercentages);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Structs
@@ -124,14 +156,14 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
         uint256[] percentages;
     }
 
-    // Struct representing a cross-chain order
-    struct CrossChainOrder {
-        PoolId poolId;
-        uint256 token0Amount;
-        uint256 token1Amount;
-        int24 lowerTick;
-        int24 upperTick;
-    }
+    //    // Struct representing a cross-chain order
+    //    struct CrossChainOrder {
+    //        PoolId poolId;
+    //        uint256 token0Amount;
+    //        uint256 token1Amount;
+    //        int24 lowerTick;
+    //        int24 upperTick;
+    //    }
 
     /// @notice Constructor initializes the contract with the router address.
     /// @param router The address of the router contract.
@@ -176,6 +208,25 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
         authorizedUser = newAuthorizedUser;
     }
 
+    // Function to set the authorized user
+    function setHookChainId(uint256 newHookChainId) public {
+        hookChainId = newHookChainId;
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Hook functions
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Hook that is called before liquidity is added. Forces user to use hook to add liquidity.
+    function beforeAddLiquidity(
+        address sender,
+        PoolKey calldata,
+        IPoolManager.ModifyLiquidityParams calldata,
+        bytes calldata
+    ) external view override returns (bytes4) {
+        require(sender == address(this), "Sender must be hook");
+        return BaseHook.beforeAddLiquidity.selector;
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Add Liquidity
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -214,53 +265,63 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
         IPoolManager.ModifyLiquidityParams memory params,
         uint256 strategyId
     ) external returns (BalanceDelta delta) {
-        delta =
-            abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params, strategyId))), (BalanceDelta));
+        delta = abi.decode(
+            poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params, strategyId))), (BalanceDelta)
+        );
     }
 
     /// @notice Callback function invoked during the unlock of liquidity, executing any required state changes.
     /// @param rawData Encoded data containing details for the unlock operation.
     /// @return Encoded result of the liquidity modification.
-    function unlockCallback(bytes calldata rawData)
-        external
-        override(IUnlockCallback, BaseHook)
-        poolManagerOnly
-        returns (bytes memory)
-    {
+    function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
+        emit Log("unlockCallback");
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         PoolKey memory key = data.key;
         PoolId poolId = key.toId();
         address sender = data.sender;
         IPoolManager.ModifyLiquidityParams memory params = data.params;
+        emit Log("unlockCallback 2");
 
-        Strategy storage strategy = strategies[data.strategyId];
+        Strategy storage strategy = strategies[poolId][data.strategyId];
         BalanceDelta delta;
 
-        if (data.params.liquidityDelta > 0) {
+        if (data.params.liquidityDelta < 0) {
             (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
             _settleDeltas(sender, key, delta);
         } else {
+            emit Log("unlockCallback 3");
             // Calculate the liquidity to be added on each chain
-            uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, params.liquidityDelta);
+            //            console.log("params.liquidityDelta", params.liquidityDelta);
+            emit Log2(uint256(params.liquidityDelta));
+            uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, uint256(params.liquidityDelta));
+            emit Log2(uint256(liquidityAmounts[0]));
 
+            emit Log("unlockCallback 4 ");
             //Add liquidity to the user if the hook's chain ID exists in the strategy
             for (uint256 i = 0; i < strategy.chainIds.length; i++) {
+                emit Log2(uint256(strategy.chainIds[i]));
+                emit Log2(uint256(hookChainId));
                 if (strategy.chainIds[i] != hookChainId) {
+                    emit Log("unlockCallback 5 ");
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
+                    emit Log2(uint256(params.liquidityDelta));
                     // TODO: Add variables to manage cross-chain order logic
                     // Calculating token amounts to transfer etc...
                 }
             }
 
             if (params.liquidityDelta > 0) {
+                emit Log("unlockCallback 6 ");
                 (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
+                emit Log3(int128(delta.amount0()));
+                emit Log3(int128(delta.amount1()));
                 _settleDeltas(sender, key, delta);
             }
             // TODO: Add cross-chain order logic with the variables from previous step
         }
         return abi.encode(delta);
     }
-    
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // CCIP Sending and Receiving
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -576,30 +637,45 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
-        _settleDelta(sender, key.currency0, uint128(delta.amount0()));
-        _settleDelta(sender, key.currency1, uint128(delta.amount1()));
+        key.currency0.settle(poolManager, sender, uint256(int256(-delta.amount0())), false);
+        key.currency1.settle(poolManager, sender, uint256(int256(-delta.amount1())), false);
+        //        _settleDelta(sender, key.currency0, uint128(delta.amount0()));
+        //        _settleDelta(sender, key.currency1, uint128(delta.amount1()));
     }
 
-    function _settleDelta(address sender, Currency currency, uint128 amount) internal {
-        if (currency.isNative()) {
-            poolManager.settle{value: amount}(currency);
-        } else {
-            if (sender == address(this)) {
-                currency.transfer(address(poolManager), amount);
-            } else {
-                IERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), amount);
-            }
-            poolManager.settle(currency);
-        }
-    }
+    //    /// @notice Calls settle or take depending on the signs of `delta0` and `delta1`
+    //    function _settleOrTake(address sender, PoolKey memory sender, BalanceDelta delta) internal {
+    //        int256 delta0 = int256(delta.amount0());
+    //        int256 delta1 = int256(delta.amount1());
+    //        if (delta0 < 0) key.currency0.settle(poolManager, sender, uint256(-delta0), useClaims);
+    //        if (delta1 < 0) key.currency1.settle(poolManager, sender, uint256(-delta1), useClaims);
+    //        if (delta0 > 0) key.currency0.take(poolManager, sender, uint256(delta0), useClaims);
+    //        if (delta1 > 0) key.currency1.take(poolManager, sender, uint256(delta1), useClaims);
+    //    }
 
-    // Function to add a new strategy
-    function addStrategy(uint256 strategyId, uint256[] memory chainIds, uint256[] memory liquidityPercentages)
-        public
-        onlyAuthorized
-    {
-        // Check that the strategy ID is not already in use
-        require(strategies[strategyId].chainIds.length == 0, "Strategy ID already in use");
+    //    function _settleDelta(address sender, Currency currency, uint128 amount) internal {
+    //
+    //        if (currency.isNative()) {
+    //            poolManager.settle{value: amount}(currency);
+    //        } else {
+    //            if (sender == address(this)) {
+    //                currency.transfer(address(poolManager), amount);
+    //            } else {
+    //                IERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), amount);
+    //            }
+    //            poolManager.settle(currency);
+    //        }
+    //    }
+
+    /// Function to add a new strategy
+    function addStrategy(
+        PoolId poolId,
+        uint256 strategyId,
+        uint256[] memory chainIds,
+        uint256[] memory liquidityPercentages
+    ) public {
+        // Check that the strategy ID is not already in use for this pool
+        require(strategies[poolId][strategyId].chainIds.length == 0, "Strategy ID already in use for this pool");
 
         // Check that the chain IDs and liquidity percentages arrays have the same length
         require(
@@ -615,9 +691,9 @@ contract CCLOHook is CCIPReceiver, IUnlockCallback, BaseHook {
         require(totalLiquidityPercentage == 100, "Liquidity percentages must add up to 100");
 
         // Add the new strategy to the strategies mapping
-        strategies[strategyId] = Strategy({chainIds: chainIds, liquidityPercentages: liquidityPercentages});
+        strategies[poolId][strategyId] = Strategy({chainIds: chainIds, percentages: liquidityPercentages});
 
         // Emit an event to notify that a new strategy has been added
-        emit StrategyAdded(strategyId, chainIds, liquidityPercentages);
+        emit StrategyAdded(poolId, strategyId, chainIds, liquidityPercentages);
     }
 }
