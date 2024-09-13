@@ -123,7 +123,7 @@ contract CCLOHook is IUnlockCallback, BaseHook {
         );
 
         // Transfer the LP token to the user
-        UniswapV4ERC20(poolInfo[key.toId()].liquidityToken).mint(to, liquidity);
+//        UniswapV4ERC20(poolInfo[key.toId()].liquidityToken).mint(to, liquidity);
     }
 
     // Function to create a cross-chain order for the remaining liquidity
