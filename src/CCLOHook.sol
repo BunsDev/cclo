@@ -26,6 +26,13 @@ contract CCLOHook is IUnlockCallback, BaseHook {
     using SafeCast for uint128;
     using StateLibrary for IPoolManager;
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // State variables
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Authorized user address
+    address public authorizedUser;
+
     // Mapping of hook's chain ID
     uint256 public hookChainId;
 
@@ -35,17 +42,35 @@ contract CCLOHook is IUnlockCallback, BaseHook {
     // Mapping of pool IDs to their respective cross-chain orders
     mapping(PoolId => CrossChainOrder) public ordersToBeFilled;
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Structs
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     // Event emitted when a cross-chain order is created
     event CrossChainOrderCreated(
-        PoolId poolId,
-        uint256 token0Amount,
-        uint256 token1Amount,
-        int24 lowerTick,
-        int24 upperTick
+        PoolId poolId, uint256 token0Amount, uint256 token1Amount, int24 lowerTick, int24 upperTick
     );
 
     // Event emitted when a cross-chain order is fulfilled
     event CrossChainOrderFulfilled(PoolId poolId);
+
+    // Event emitted when a new strategy is added
+    event StrategyAdded(uint256 strategyId, uint256[] chainIds, uint256[] liquidityPercentages);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Structs
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    /// @notice Data passed during unlocking liquidity callback, includes sender and key info.
+    /// @param sender Address of the sender initiating the unlock.
+    /// @param key The pool key associated with the liquidity position.
+    /// @param params Parameters for modifying liquidity.
+    struct CallbackData {
+        address sender;
+        PoolKey key;
+        IPoolManager.ModifyLiquidityParams params;
+        uint256 strategyId;
+    }
 
     // Struct representing a liquidity distribution strategy
     struct Strategy {
@@ -64,117 +89,248 @@ contract CCLOHook is IUnlockCallback, BaseHook {
 
     constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
 
-    // Function to add liquidity across multiple chains using a predefined strategy
-    function addLiquidityCrossChain(
-        PoolKey calldata key,
-        uint256 strategyId,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        uint256 amount0Min,
-        uint256 amount1Min,
-        address to
-    ) external returns (uint128 liquidity) {
-        // Get the selected strategy
-        Strategy storage strategy = strategies[strategyId];
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Modifiers
+    ////////////////////////////////////////////////////////////////////////////////////////////////
 
-        // Calculate the liquidity to be added on each chain
-        uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, amount0Desired, amount1Desired);
-
-        // Add liquidity to the user if the hook's chain ID exists in the strategy
-        for (uint256 i = 0; i < strategy.chainIds.length; i++) {
-            if (strategy.chainIds[i] == hookChainId) {
-                // Add liquidity to the user
-                _addLiquidityToUser(key, liquidityAmounts[i], amount0Desired, amount1Desired, to);
-            } else {
-                // Create a cross-chain order for the remaining liquidity
-                _createCrossChainOrder(key, liquidityAmounts[i], amount0Desired, amount1Desired);
-            }
-        }
+    // Modifier to restrict access to authorized users only
+    modifier onlyAuthorized() {
+        require(msg.sender == authorizedUser, "Only authorized users can add strategies");
+        _;
     }
 
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Admin functions
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Function to set the authorized user
+    function setAuthorizedUser(address newAuthorizedUser) public {
+        authorizedUser = newAuthorizedUser;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Add Liquidity
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    //    // Function to add liquidity across multiple chains using a predefined strategy
+    //    function addLiquidityCrossChain(
+    //        PoolKey calldata key,
+    //        uint256 strategyId,
+    //        uint256 amount0Desired,
+    //        uint256 amount1Desired,
+    //        uint256 amount0Min,
+    //        uint256 amount1Min,
+    //        address to
+    //    ) external returns (uint128 liquidity) {
+    //        // Get the selected strategy
+    //        Strategy storage strategy = strategies[strategyId];
+    //
+    //        // Calculate the liquidity to be added on each chain
+    //        uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, amount0Desired, amount1Desired);
+    //
+    //        // Add liquidity to the user if the hook's chain ID exists in the strategy
+    //        for (uint256 i = 0; i < strategy.chainIds.length; i++) {
+    //            if (strategy.chainIds[i] == hookChainId) {
+    //                // Add liquidity to the user
+    //                _addLiquidityToUser(key, liquidityAmounts[i], amount0Desired, amount1Desired, to);
+    //            } else {
+    //                params.liquidityDelta -= int256(uint256(liquidityToBridge));
+    //                // Create a cross-chain order for the remaining liquidity
+    //                _createCrossChainOrder(key, liquidityAmounts[i], amount0Desired, amount1Desired);
+    //            }
+    //        }
+    //    }
+
+    function addLiquidityWithCrossChainStrategy(
+        PoolKey memory key,
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 strategyId
+    ) external returns (BalanceDelta delta) {
+        delta =
+            abi.decode(poolManager.lock(abi.encode(CallbackData(msg.sender, key, params, strategyId))), (BalanceDelta));
+    }
+
+    /// @notice Callback function invoked during the unlock of liquidity, executing any required state changes.
+    /// @param rawData Encoded data containing details for the unlock operation.
+    /// @return Encoded result of the liquidity modification.
+    function unlockCallback(bytes calldata rawData)
+        external
+        override(IUnlockCallback, BaseHook)
+        poolManagerOnly
+        returns (bytes memory)
+    {
+        CallbackData memory data = abi.decode(rawData, (CallbackData));
+        PoolKey memory key = data.key;
+        PoolId poolId = key.toId();
+        address sender = data.sender;
+        IPoolManager.ModifyLiquidityParams memory params = data.params;
+
+        Strategy storage strategy = strategies[data.strategyId];
+        BalanceDelta delta;
+
+        if (data.params.liquidityDelta > 0) {
+            (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
+            _settleDeltas(sender, key, delta);
+        } else {
+            // Calculate the liquidity to be added on each chain
+            uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, params.liquidityDelta);
+
+            //Add liquidity to the user if the hook's chain ID exists in the strategy
+            for (uint256 i = 0; i < strategy.chainIds.length; i++) {
+                if (strategy.chainIds[i] != hookChainId) {
+                    params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
+                    // TODO: Add variables to manage cross-chain order logic
+                    // Calculating token amounts to transfer etc...
+                }
+            }
+
+            if (params.liquidityDelta > 0) {
+                (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
+                _settleDeltas(sender, key, delta);
+            }
+            // TODO: Add cross-chain order logic with the variables from previous step
+        }
+        return abi.encode(delta);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // Helpers
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
     // Function to calculate the liquidity amounts for each chain based on the selected strategy
-    function _calculateLiquidityAmounts(
-        Strategy storage strategy,
-        uint256 amount0Desired,
-        uint256 amount1Desired
-    ) internal view returns (uint256[] memory liquidityAmounts) {
+    function _calculateLiquidityAmounts(Strategy storage strategy, uint256 liquidityAmount)
+        internal
+        view
+        returns (uint256[] memory liquidityAmounts)
+    {
         liquidityAmounts = new uint256[](strategy.chainIds.length);
 
         for (uint256 i = 0; i < strategy.chainIds.length; i++) {
             uint256 percentage = strategy.percentages[i];
-            liquidityAmounts[i] = (amount0Desired * percentage) / 100;
+            liquidityAmounts[i] = (liquidityAmount * percentage) / 100;
         }
     }
 
-    // Function to add liquidity to the user
-    function _addLiquidityToUser(
-        PoolKey calldata key,
-        uint256 liquidityAmount,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        address to
-    ) internal {
-        // Add liquidity to the user
-        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-            TickMath.getSqrtPriceAtTick(key.tickLower),
-            TickMath.getSqrtPriceAtTick(key.tickUpper),
-            amount0Desired,
-            amount1Desired
+    //    // Function to add liquidity to the user
+    //    function _addLiquidityToUser(
+    //        PoolKey calldata key,
+    //        uint256 liquidityAmount,
+    //        uint256 amount0Desired,
+    //        uint256 amount1Desired,
+    //        address to
+    //    ) internal {
+    //        // Add liquidity to the user
+    //        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+    //            TickMath.getSqrtPriceAtTick(key.tickLower),
+    //            TickMath.getSqrtPriceAtTick(key.tickUpper),
+    //            amount0Desired,
+    //            amount1Desired
+    //        );
+    //
+    //        // Transfer the LP token to the user
+    ////        UniswapV4ERC20(poolInfo[key.toId()].liquidityToken).mint(to, liquidity);
+    //    }
+
+    //    // Function to create a cross-chain order for the remaining liquidity
+    //    function _createCrossChainOrder(
+    //        PoolKey calldata key,
+    //        uint256 liquidityAmount,
+    //        uint256 amount0Desired,
+    //        uint256 amount1Desired
+    //    ) internal {
+    //        // Create a cross-chain order
+    //        CrossChainOrder storage order = ordersToBeFilled[key.toId()];
+    //        order.poolId = key.toId();
+    //        order.token0Amount = amount0Desired;
+    //        order.token1Amount = amount1Desired;
+    //        order.lowerTick = key.tickLower;
+    //        order.upperTick = key.tickUpper;
+    //    }
+
+    //    // Function to fulfill a cross-chain order
+    //    function fulfillCrossChainOrder(PoolId poolId) external {
+    //        // Get the cross-chain order
+    //        CrossChainOrder storage order = ordersToBeFilled[poolId];
+    //
+    //        // Fulfill the cross-chain order
+    //        _fulfillCrossChainOrder(order);
+    //
+    //        // Emit an event to indicate the fulfillment of the cross-chain order
+    //        emit CrossChainOrderFulfilled(poolId);
+    //    }
+
+    //    // Function to fulfill a cross-chain order
+    //    function _fulfillCrossChainOrder(CrossChainOrder storage order) internal {
+    //        // Add liquidity on the destination chain
+    //        _addLiquidityOnDestinationChain(order.poolId, order.token0Amount, order.token1Amount);
+    //
+    //        // Transfer the LP token to the user
+    //        UniswapV4ERC20(poolInfo[order.poolId].liquidityToken).mint(msg.sender, order.token0Amount);
+    //    }
+
+    //    // Function to add liquidity on the destination chain
+    //    function _addLiquidityOnDestinationChain(
+    //        PoolId poolId,
+    //        uint256 amount0Desired,
+    //        uint256 amount1Desired
+    //    ) internal {
+    //        // Add liquidity on the destination chain
+    //        LiquidityAmounts.getLiquidityForAmounts(
+    //            TickMath.getSqrtPriceAtTick(poolInfo[poolId].tickLower),
+    //            TickMath.getSqrtPriceAtTick(poolInfo[poolId].tickUpper),
+    //            amount0Desired,
+    //            amount1Desired
+    //        );
+    //    }
+
+    function _takeDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
+        poolManager.take(key.currency0, sender, uint256(uint128(-delta.amount0())));
+        poolManager.take(key.currency1, sender, uint256(uint128(-delta.amount1())));
+    }
+
+    function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
+        _settleDelta(sender, key.currency0, uint128(delta.amount0()));
+        _settleDelta(sender, key.currency1, uint128(delta.amount1()));
+    }
+
+    function _settleDelta(address sender, Currency currency, uint128 amount) internal {
+        if (currency.isNative()) {
+            poolManager.settle{value: amount}(currency);
+        } else {
+            if (sender == address(this)) {
+                currency.transfer(address(poolManager), amount);
+            } else {
+                IERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), amount);
+            }
+            poolManager.settle(currency);
+        }
+    }
+
+    // Function to add a new strategy
+    function addStrategy(uint256 strategyId, uint256[] memory chainIds, uint256[] memory liquidityPercentages)
+        public
+        onlyAuthorized
+    {
+        // Check that the strategy ID is not already in use
+        require(strategies[strategyId].chainIds.length == 0, "Strategy ID already in use");
+
+        // Check that the chain IDs and liquidity percentages arrays have the same length
+        require(
+            chainIds.length == liquidityPercentages.length,
+            "Chain IDs and liquidity percentages arrays must have the same length"
         );
 
-        // Transfer the LP token to the user
-//        UniswapV4ERC20(poolInfo[key.toId()].liquidityToken).mint(to, liquidity);
-    }
+        // Check that the liquidity percentages add up to 100
+        uint256 totalLiquidityPercentage = 0;
+        for (uint256 i = 0; i < liquidityPercentages.length; i++) {
+            totalLiquidityPercentage += liquidityPercentages[i];
+        }
+        require(totalLiquidityPercentage == 100, "Liquidity percentages must add up to 100");
 
-    // Function to create a cross-chain order for the remaining liquidity
-    function _createCrossChainOrder(
-        PoolKey calldata key,
-        uint256 liquidityAmount,
-        uint256 amount0Desired,
-        uint256 amount1Desired
-    ) internal {
-        // Create a cross-chain order
-        CrossChainOrder storage order = ordersToBeFilled[key.toId()];
-        order.poolId = key.toId();
-        order.token0Amount = amount0Desired;
-        order.token1Amount = amount1Desired;
-        order.lowerTick = key.tickLower;
-        order.upperTick = key.tickUpper;
-    }
+        // Add the new strategy to the strategies mapping
+        strategies[strategyId] = Strategy({chainIds: chainIds, liquidityPercentages: liquidityPercentages});
 
-    // Function to fulfill a cross-chain order
-    function fulfillCrossChainOrder(PoolId poolId) external {
-        // Get the cross-chain order
-        CrossChainOrder storage order = ordersToBeFilled[poolId];
-
-        // Fulfill the cross-chain order
-        _fulfillCrossChainOrder(order);
-
-        // Emit an event to indicate the fulfillment of the cross-chain order
-        emit CrossChainOrderFulfilled(poolId);
-    }
-
-    // Function to fulfill a cross-chain order
-    function _fulfillCrossChainOrder(CrossChainOrder storage order) internal {
-        // Add liquidity on the destination chain
-        _addLiquidityOnDestinationChain(order.poolId, order.token0Amount, order.token1Amount);
-
-        // Transfer the LP token to the user
-        UniswapV4ERC20(poolInfo[order.poolId].liquidityToken).mint(msg.sender, order.token0Amount);
-    }
-
-    // Function to add liquidity on the destination chain
-    function _addLiquidityOnDestinationChain(
-        PoolId poolId,
-        uint256 amount0Desired,
-        uint256 amount1Desired
-    ) internal {
-        // Add liquidity on the destination chain
-        LiquidityAmounts.getLiquidityForAmounts(
-            TickMath.getSqrtPriceAtTick(poolInfo[poolId].tickLower),
-            TickMath.getSqrtPriceAtTick(poolInfo[poolId].tickUpper),
-            amount0Desired,
-            amount1Desired
-        );
+        // Emit an event to notify that a new strategy has been added
+        emit StrategyAdded(strategyId, chainIds, liquidityPercentages);
     }
 }
