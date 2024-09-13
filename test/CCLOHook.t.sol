@@ -13,6 +13,7 @@ import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
 import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {CCLOHook} from "../src/CCLOHook.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
+import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
 
 import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol";
 import {EasyPosm} from "./utils/EasyPosm.sol";
@@ -25,6 +26,7 @@ contract CCLOHookTest is Test, Fixtures {
     using StateLibrary for IPoolManager;
 
     CCLOHook hook;
+    address hookAddress;
     PoolId poolId;
 
     address authorizedUser = address(0xFEED);
@@ -50,8 +52,9 @@ contract CCLOHookTest is Test, Fixtures {
         bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flags);
         hook = CCLOHook(flags);
+        hookAddress = address(hook);
         uint256[] memory chainIds = new uint256[](1);
-        chainIds[0] = crossChainHookChainId;
+        chainIds[0] = originalHookChainId;
         uint256[] memory percentages = new uint256[](1);
         percentages[0] = 100;
         //        hook.addStrategy(0, chainIds, percentages);
@@ -85,5 +88,28 @@ contract CCLOHookTest is Test, Fixtures {
         vm.expectRevert(bytes(""));
         (bool revertsAsExpected,) = address(posm).call(_calldata);
         assertTrue(revertsAsExpected, "expectRevert: call did not revert");
+    }
+
+    function test_AddLiquidityToStrategy1() public {
+        // Provide full-range liquidity to the pool
+        // Add some initial liquidity through the custom `addLiquidity` function
+        IERC20Minimal(Currency.unwrap(key.currency0)).approve(hookAddress, 1000 ether);
+        IERC20Minimal(Currency.unwrap(key.currency1)).approve(hookAddress, 1000 ether);
+
+        tickLower = TickMath.minUsableTick(key.tickSpacing);
+        tickUpper = TickMath.maxUsableTick(key.tickSpacing);
+
+        uint256 balance0Before = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
+        uint256 balance1Before = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
+
+        hook.addLiquidityWithCrossChainStrategy(
+            key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 1000e18, bytes32(0)), 1
+        );
+
+        uint256 balance0After = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
+        uint256 balance1After = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
+
+        assertEq(balance0Before - balance0After, 999999999999999999946);
+        assertEq(balance1Before - balance1After, 999999999999999999946);
     }
 }
