@@ -87,7 +87,10 @@ contract CCLOHook is IUnlockCallback, BaseHook {
         int24 upperTick;
     }
 
-    constructor(IPoolManager _poolManager) BaseHook(_poolManager) {}
+    constructor(IPoolManager _poolManager, address _authorizedUser, uint256 _hookChainId) BaseHook(_poolManager) {
+        hookChainId = _hookChainId;
+        authorizedUser = _authorizedUser;
+    }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Modifiers
