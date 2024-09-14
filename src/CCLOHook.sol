@@ -255,13 +255,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     /// @param rawData Encoded data containing details for the unlock operation.
     /// @return Encoded result of the liquidity modification.
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
-        emit Log("unlockCallback");
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         PoolKey memory key = data.key;
         PoolId poolId = key.toId();
         address sender = data.sender;
         IPoolManager.ModifyLiquidityParams memory params = data.params;
-        emit Log("unlockCallback 2");
 
         Strategy storage strategy = strategies[poolId][data.strategyId];
         BalanceDelta delta;
@@ -270,32 +268,21 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
             _settleDeltas(sender, key, delta);
         } else {
-            emit Log("unlockCallback 3");
             // Calculate the liquidity to be added on each chain
             //            console.log("params.liquidityDelta", params.liquidityDelta);
-            emit Log2(uint256(params.liquidityDelta));
             uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, uint256(params.liquidityDelta));
-            emit Log2(uint256(liquidityAmounts[0]));
 
-            emit Log("unlockCallback 4 ");
             //Add liquidity to the user if the hook's chain ID exists in the strategy
             for (uint256 i = 0; i < strategy.chainIds.length; i++) {
-                emit Log2(uint256(strategy.chainIds[i]));
-                emit Log2(uint256(hookChainId));
                 if (strategy.chainIds[i] != hookChainId) {
-                    emit Log("unlockCallback 5 ");
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
-                    emit Log2(uint256(params.liquidityDelta));
                     // TODO: Add variables to manage cross-chain order logic
                     // Calculating token amounts to transfer etc...
                 }
             }
 
             if (params.liquidityDelta > 0) {
-                emit Log("unlockCallback 6 ");
                 (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
-                emit Log3(int128(delta.amount0()));
-                emit Log3(int128(delta.amount1()));
                 _settleDeltas(sender, key, delta);
             }
             // TODO: Add cross-chain order logic with the variables from previous step
