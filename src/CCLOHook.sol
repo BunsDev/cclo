@@ -272,12 +272,15 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             //            console.log("params.liquidityDelta", params.liquidityDelta);
             uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, uint256(params.liquidityDelta));
 
+            (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+
             //Add liquidity to the user if the hook's chain ID exists in the strategy
             for (uint256 i = 0; i < strategy.chainIds.length; i++) {
                 if (strategy.chainIds[i] != hookChainId) {
+                    (uint256 amount0, uint256 amount1) =
+                        _calculateTokenAmounts(key, params, liquidityAmounts[i], sqrtPriceX96);
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
-                    // TODO: Add variables to manage cross-chain order logic
-                    // Calculating token amounts to transfer etc...
+                    _transferCrossChain(strategy.chainIds[i], key, amount0, amount1, sender);
                 }
             }
 
@@ -463,6 +466,40 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             uint256 percentage = strategy.percentages[i];
             liquidityAmounts[i] = (liquidityAmount * percentage) / 100;
         }
+    }
+
+    function _calculateTokenAmounts(
+        PoolKey memory key,
+        IPoolManager.ModifyLiquidityParams memory params,
+        uint256 liquidity,
+        uint160 sqrtPriceX96
+    ) internal pure returns (uint256 amount0, uint256 amount1) {
+        uint160 sqrtPriceAX96 = TickMath.getSqrtPriceAtTick(params.tickLower);
+        uint160 sqrtPriceBX96 = TickMath.getSqrtPriceAtTick(params.tickUpper);
+
+        if (sqrtPriceX96 <= sqrtPriceAX96) {
+            // Current price is below the range, only token0 is needed
+            amount0 = FullMath.mulDiv(liquidity << 96, sqrtPriceBX96 - sqrtPriceAX96, sqrtPriceBX96) / sqrtPriceAX96;
+            amount1 = 0;
+        } else if (sqrtPriceX96 < sqrtPriceBX96) {
+            // Current price is within the range, both tokens are needed
+            amount0 = FullMath.mulDiv(liquidity << 96, sqrtPriceBX96 - sqrtPriceX96, sqrtPriceBX96) / sqrtPriceX96;
+            amount1 = FullMath.mulDiv(liquidity, sqrtPriceX96 - sqrtPriceAX96, FixedPoint96.Q96);
+        } else {
+            // Current price is above the range, only token1 is needed
+            amount0 = 0;
+            amount1 = FullMath.mulDiv(liquidity, sqrtPriceBX96 - sqrtPriceAX96, FixedPoint96.Q96);
+        }
+    }
+
+    function _transferCrossChain(
+        uint256 destinationChainId,
+        PoolKey memory key,
+        uint256 amount0,
+        uint256 amount1,
+        address recipient
+    ) internal {
+        // TODO: Add logic to transfer tokens to the recipient
     }
 
     //    // Function to add liquidity to the user
