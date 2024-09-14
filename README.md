@@ -18,15 +18,15 @@ A simple way to add liquidity to Uniswap V4 pools on multiple chains using Unisw
 
 **Users can provide liquidity across multiple chains simply by interacting with a single hook contract on one chain.**
 
-### CCLO Architecture
+## CCLO Architecture
 
 ![CCLO Architecture](./cclo-architecture.png)
 
-### Example sequence
+## Example sequence
 
 To be added.
 
-### Future Improvements
+## Future Improvements
 
 #### Just-in-time (JIT) liquidity provision for swaps:
 
