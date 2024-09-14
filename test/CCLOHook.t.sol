@@ -151,10 +151,6 @@ contract CCLOHookTest is Test, Fixtures {
 
         console.log("CCIP Token balance before:", balanceOfSenderBefore);
 
-        // Expect the ERC20.transferFrom event to be emitted
-        // vm.expectEmit(true, true, true, true);
-        // emit IERC20.Transfer(address(hookAddress), address(hook.getRouter()), amountToSend);
-
         // Send the cross-chain order
         bytes32 messageId = hook.sendMessage(
             destinationChainSelector,
