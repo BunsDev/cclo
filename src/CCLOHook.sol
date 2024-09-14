@@ -19,8 +19,11 @@ import {FixedPoint96} from "v4-core/src/libraries/FixedPoint96.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {IUnlockCallback} from "v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {BeforeSwapDelta, BeforeSwapDeltaLibrary} from "v4-core/src/types/BeforeSwapDelta.sol";
-import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
-
+//import {CCIPReceiver} from "@chainlink/contracts-ccip/src/v0.8/ccip/applications/CCIPReceiver.sol";
+import {CCIPReceiver} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/applications/CCIPReceiver.sol";
+import {Client} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/libraries/Client.sol";
+import {IRouterClient} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/interfaces/IRouterClient.sol";
+import {IRouter} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/interfaces/IRouter.sol";
 
 
 contract CCLOHook is CCIPReceiver, BaseHook {
@@ -170,23 +173,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     constructor(IPoolManager _poolManager, address _authorizedUser, uint256 _hookChainId, address router) BaseHook(_poolManager) CCIPReceiver(router) {
         hookChainId = _hookChainId;
         authorizedUser = _authorizedUser;
-    }
-
-    function getHookPermissions() public pure override returns (Hooks.Permissions memory) {
-      return Hooks.Permissions({
-          beforeInitialize: false,
-          afterInitialize: false,
-          beforeAddLiquidity: true,
-          afterAddLiquidity: false,
-          beforeRemoveLiquidity: true,
-          afterRemoveLiquidity: false,
-          beforeSwap: false,
-          afterSwap: false,
-          beforeDonate: false,
-          afterDonate: false,
-          noOp: false,
-          accessLock: false
-      });
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -364,7 +350,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         IRouterClient router = IRouterClient(this.getRouter());
 
         // approve the Router to spend tokens on contract's behalf. I will spend the amount of the given token
-        IERC20(token).approve(address(router), amount);
+        IERC20Minimal(token).approve(address(router), amount);
 
         // Get the fee required to send the message
         uint256 fees = router.getFee(destinationChainSelector, evm2AnyMessage);
