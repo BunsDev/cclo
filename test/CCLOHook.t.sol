@@ -19,7 +19,19 @@ import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol
 import {EasyPosm} from "./utils/EasyPosm.sol";
 import {Fixtures} from "./utils/Fixtures.sol";
 
+// CCIP
+import {
+    CCIPLocalSimulator, IRouterClient, BurnMintERC677Helper
+} from "@chainlink/local/src/ccip/CCIPLocalSimulator.sol";
+
 contract CCLOHookTest is Test, Fixtures {
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // CCIP Variables
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    CCIPLocalSimulator public ccipLocalSimulator;
+    uint64 public destinationChainSelector;
+    BurnMintERC677Helper public ccipBnMToken;
+    ////////////////////////////////////////////////////////////////////////////////////////////////
     using EasyPosm for IPositionManager;
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -49,10 +61,22 @@ contract CCLOHookTest is Test, Fixtures {
             uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG) ^ (0x4444 << 144) // Namespace the hook to avoid collisions
         );
 
-        bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId); //Add all the necessary constructor arguments from the hook
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        // CCIP Setup
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+        ccipLocalSimulator = new CCIPLocalSimulator();
+        (uint64 chainSelector, IRouterClient sourceRouter,,,, BurnMintERC677Helper ccipBnM,) =
+            ccipLocalSimulator.configuration();
+        destinationChainSelector = chainSelector;
+        ccipBnMToken = ccipBnM;
+        ////////////////////////////////////////////////////////////////////////////////////////////////
+
+        bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flags);
         hook = CCLOHook(flags);
         hookAddress = address(hook);
+        console.log("Hook address:", hookAddress);
+        require(hookAddress == flags, "Hook address does not match flags");
         uint256[] memory chainIds = new uint256[](1);
         chainIds[0] = originalHookChainId;
         uint256[] memory percentages = new uint256[](1);
@@ -111,5 +135,52 @@ contract CCLOHookTest is Test, Fixtures {
 
         assertEq(balance0Before - balance0After, 999999999999999999946);
         assertEq(balance1Before - balance1After, 999999999999999999946);
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // CCIP Tests
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    function test_TokensLeaveSourceChain() external {
+        deal(address(hookAddress), 1 ether);
+        ccipBnMToken.drip(address(hookAddress));
+
+        string memory messageToSend = "Hello, World!";
+        uint256 amountToSend = 100;
+
+        uint256 balanceOfSenderBefore = ccipBnMToken.balanceOf(address(hookAddress));
+
+        console.log("CCIP Token balance before:", balanceOfSenderBefore);
+
+        // Expect the ERC20.transferFrom event to be emitted
+        // vm.expectEmit(true, true, true, true);
+        // emit IERC20.Transfer(address(hookAddress), address(hook.getRouter()), amountToSend);
+
+        // Send the cross-chain order
+        bytes32 messageId = hook.sendMessage(
+            destinationChainSelector,
+            address(0x1231231231231231231231231231231231231231), // random address so we transfer the tokens out
+            messageToSend,
+            address(ccipBnMToken),
+            amountToSend
+        );
+
+        uint256 balanceOfSenderAfter = ccipBnMToken.balanceOf(address(hookAddress));
+
+        console.log("CCIP Token balance after:", balanceOfSenderAfter);
+        console.log("Message ID:", uint256(messageId));
+
+        // Assertions
+        assertEq(balanceOfSenderAfter, balanceOfSenderBefore - amountToSend, "CCIP token balance not decreased correctly");
+        assertTrue(messageId != bytes32(0), "Message ID should not be zero");
+
+        // Check if the message was actually sent through the CCIP router
+        // Doesn't work because we do not have a message to receive! We've only sent the message "out".
+        // (uint64 sourceChainSelector, address sender, string memory message, address token, uint256 amount) = hook.getReceivedMessageDetails(messageId);
+        // assertEq(sourceChainSelector, destinationChainSelector, "Source chain selector does not match");
+        // assertEq(sender, address(hook), "Sender does not match");
+        // assertEq(message, messageToSend, "Message does not match");
+        // assertEq(token, address(ccipBnMToken), "Token does not match");
+        // assertEq(amount, amountToSend, "Amount does not match");
+
     }
 }
