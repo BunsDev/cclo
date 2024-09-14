@@ -24,6 +24,7 @@ import {CCIPReceiver} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/app
 import {Client} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/libraries/Client.sol";
 import {IRouterClient} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/interfaces/IRouterClient.sol";
 import {IRouter} from "chainlink-local/lib/ccip/contracts/src/v0.8/ccip/interfaces/IRouter.sol";
+import {LiquidityAmounts} from "v4-core/test/utils/LiquidityAmounts.sol";
 
 contract CCLOHook is CCIPReceiver, BaseHook {
     using CurrencyLibrary for Currency;
@@ -104,6 +105,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         PoolKey key;
         IPoolManager.ModifyLiquidityParams params;
         uint256 strategyId;
+        bool isCrossChainIncoming;
     }
 
     // Struct representing a liquidity distribution strategy
@@ -247,7 +249,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 strategyId
     ) external returns (BalanceDelta delta) {
         delta = abi.decode(
-            poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params, strategyId))), (BalanceDelta)
+            poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params, strategyId, false))), (BalanceDelta)
         );
     }
 
@@ -259,10 +261,17 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         PoolKey memory key = data.key;
         PoolId poolId = key.toId();
         address sender = data.sender;
+        bool isCrossChainIncoming = data.isCrossChainIncoming;
         IPoolManager.ModifyLiquidityParams memory params = data.params;
 
         Strategy storage strategy = strategies[poolId][data.strategyId];
         BalanceDelta delta;
+
+        if (isCrossChainIncoming) {
+            (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
+            _settleDeltas(sender, key, delta);
+            return abi.encode(delta);
+        }
 
         if (data.params.liquidityDelta < 0) {
             (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
@@ -312,7 +321,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         address token,
         uint256 amount
     ) external returns (bytes32 messageId) {
-        // set the tokent amounts
+        // set the token amounts
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
         Client.EVMTokenAmount memory tokenAmount = Client.EVMTokenAmount({token: token, amount: amount});
         tokenAmounts[0] = tokenAmount;
@@ -350,19 +359,93 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     /// handle a received message
-    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
-        bytes32 messageId = any2EvmMessage.messageId; // fetch the messageId
-        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector; // fetch the source chain identifier (aka selector)
-        address sender = abi.decode(any2EvmMessage.sender, (address)); // abi-decoding of the sender address
-        Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
-        address token = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        uint256 amount = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
-        receivedMessages.push(messageId);
-        Message memory detail = Message(sourceChainSelector, sender, message, token, amount);
-        messageDetail[messageId] = detail;
+    //    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
+    //        bytes32 messageId = any2EvmMessage.messageId; // fetch the messageId
+    //        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector; // fetch the source chain identifier (aka selector)
+    //        address sender = abi.decode(any2EvmMessage.sender, (address)); // abi-decoding of the sender address
+    //        Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
+    //        address token = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+    //        uint256 amount = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+    //        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
+    //        receivedMessages.push(messageId);
+    //        Message memory detail = Message(sourceChainSelector, sender, message, token, amount);
+    //        messageDetail[messageId] = detail;
+    //
+    //        emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0]);
+    //    }
 
-        emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0]);
+    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
+        bytes32 messageId = any2EvmMessage.messageId;
+        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector;
+        address sender = abi.decode(any2EvmMessage.sender, (address));
+
+        // Decode the payload
+        (address recipient, uint24 fee, int24 tickSpacing, int24 tickLower, int24 tickUpper) =
+            abi.decode(any2EvmMessage.data, (address, uint24, int24, int24, int24));
+
+        Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
+
+        address token0Address = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        uint256 token0Amount = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        address token1Address = tokenAmounts[1].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        uint256 token1Amount = tokenAmounts[1].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(token0Address),
+            currency1: Currency.wrap(token1Address),
+            fee: fee,
+            tickSpacing: tickSpacing,
+            hooks: IHooks(address(this))
+        });
+
+        PoolId poolId = key.toId();
+
+        (uint160 currentSqrtPriceX96, int24 currentTick,,) = poolManager.getSlot0(poolId);
+
+        {
+            uint160 lowerSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
+            uint160 upperSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
+
+            // Add liquidity with current pending amounts
+            uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+                currentSqrtPriceX96, lowerSqrtPriceX96, upperSqrtPriceX96, token0Amount, token1Amount
+            );
+
+            IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
+                liquidityDelta: int256(uint256(liquidity)),
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                salt: bytes32(0)
+            });
+
+            // Lock and add liquidity
+            BalanceDelta delta = abi.decode(
+                poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params, 1, true))), (BalanceDelta)
+            );
+
+            token0Amount -= uint256(uint128(delta.amount0()));
+            token1Amount -= uint256(uint128(delta.amount1()));
+        }
+
+        // Refund remaining tokens to recipient
+        if (token0Amount > 0) {
+            IERC20Minimal(token0Address).transfer(recipient, token0Amount);
+            token0Amount = 0;
+        }
+
+        if (token1Amount > 0) {
+            IERC20Minimal(token1Address).transfer(recipient, token1Amount);
+            token1Amount = 0;
+        }
+
+        // Emit an event with message details
+        emit MessageReceived(
+            messageId,
+            sourceChainSelector,
+            sender,
+            "",
+            Client.EVMTokenAmount({token: address(0), amount: 0}) // Placeholder since we're not using token transfers directly through CCIP
+        );
     }
 
     /// @notice Get the total number of received messages.

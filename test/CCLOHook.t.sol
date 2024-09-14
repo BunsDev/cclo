@@ -32,6 +32,7 @@ contract CCLOHookTest is Test, Fixtures {
     uint64 public destinationChainSelector;
     BurnMintERC677Helper public ccipBnMToken;
     ////////////////////////////////////////////////////////////////////////////////////////////////
+
     using EasyPosm for IPositionManager;
     using PoolIdLibrary for PoolKey;
     using CurrencyLibrary for Currency;
@@ -166,7 +167,9 @@ contract CCLOHookTest is Test, Fixtures {
         console.log("Message ID:", uint256(messageId));
 
         // Assertions
-        assertEq(balanceOfSenderAfter, balanceOfSenderBefore - amountToSend, "CCIP token balance not decreased correctly");
+        assertEq(
+            balanceOfSenderAfter, balanceOfSenderBefore - amountToSend, "CCIP token balance not decreased correctly"
+        );
         assertTrue(messageId != bytes32(0), "Message ID should not be zero");
 
         // Check if the message was actually sent through the CCIP router
@@ -177,6 +180,5 @@ contract CCLOHookTest is Test, Fixtures {
         // assertEq(message, messageToSend, "Message does not match");
         // assertEq(token, address(ccipBnMToken), "Token does not match");
         // assertEq(amount, amountToSend, "Amount does not match");
-
     }
 }
