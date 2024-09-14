@@ -64,12 +64,12 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     event StrategyAdded(PoolId poolId, uint256 strategyId, uint256[] chainIds, uint256[] liquidityPercentages);
 
     // Event emitted when a message is sent to another chain.
+    // The chain selector of the destination chain.
+    // The address of the receiver on the destination chain.
+    // The message being sent.
+    // The token amount that was sent.
+    // The fees paid for sending the message.
     event MessageSent( // The unique ID of the message.
-        // The chain selector of the destination chain.
-        // The address of the receiver on the destination chain.
-        // The message being sent.
-        // The token amount that was sent.
-        // The fees paid for sending the message.
         bytes32 indexed messageId,
         uint64 indexed destinationChainSelector,
         address receiver,
@@ -79,11 +79,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     );
 
     // Event emitted when a message is received from another chain.
+    // The chain selector of the source chain.
+    // The address of the sender from the source chain.
+    // The message that was received.
+    // The token amount that was received.
     event MessageReceived( // The unique ID of the message.
-        // The chain selector of the source chain.
-        // The address of the sender from the source chain.
-        // The message that was received.
-        // The token amount that was received.
         bytes32 indexed messageId,
         uint64 indexed sourceChainSelector,
         address sender,
