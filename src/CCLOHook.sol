@@ -123,6 +123,18 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 amount; // received amount.
     }
 
+    struct CCIPReceiveParams {
+        address recipient;
+        uint24 fee;
+        int24 tickSpacing;
+        int24 tickLower;
+        int24 tickUpper;
+        address token0Address;
+        uint256 token0Amount;
+        address token1Address;
+        uint256 token1Amount;
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // Errors
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -287,7 +299,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             for (uint256 i = 0; i < strategy.chainIds.length; i++) {
                 if (strategy.chainIds[i] != hookChainId) {
                     (uint256 amount0, uint256 amount1) =
-                        _calculateTokenAmounts(key, params, liquidityAmounts[i], sqrtPriceX96);
+                        _calculateTokenAmounts(params, liquidityAmounts[i], sqrtPriceX96);
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
                     _transferCrossChain(strategy.chainIds[i], key, amount0, amount1, sender);
                 }
@@ -379,72 +391,37 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector;
         address sender = abi.decode(any2EvmMessage.sender, (address));
 
-        // Decode the payload
-        (address recipient, uint24 fee, int24 tickSpacing, int24 tickLower, int24 tickUpper) =
+        CCIPReceiveParams memory params;
+        (params.recipient, params.fee, params.tickSpacing, params.tickLower, params.tickUpper) =
             abi.decode(any2EvmMessage.data, (address, uint24, int24, int24, int24));
 
         Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
 
-        address token0Address = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        uint256 token0Amount = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        address token1Address = tokenAmounts[1].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        uint256 token1Amount = tokenAmounts[1].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        params.token0Address = tokenAmounts[0].token;
+        params.token0Amount = tokenAmounts[0].amount;
+        params.token1Address = tokenAmounts[1].token;
+        params.token1Amount = tokenAmounts[1].amount;
 
         PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(token0Address),
-            currency1: Currency.wrap(token1Address),
-            fee: fee,
-            tickSpacing: tickSpacing,
+            currency0: Currency.wrap(params.token0Address),
+            currency1: Currency.wrap(params.token1Address),
+            fee: params.fee,
+            tickSpacing: params.tickSpacing,
             hooks: IHooks(address(this))
         });
 
         PoolId poolId = key.toId();
 
-        (uint160 currentSqrtPriceX96, int24 currentTick,,) = poolManager.getSlot0(poolId);
+        (uint160 currentSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
 
-        {
-            uint160 lowerSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickLower);
-            uint160 upperSqrtPriceX96 = TickMath.getSqrtPriceAtTick(tickUpper);
-
-            // Add liquidity with current pending amounts
-            uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-                currentSqrtPriceX96, lowerSqrtPriceX96, upperSqrtPriceX96, token0Amount, token1Amount
-            );
-
-            IPoolManager.ModifyLiquidityParams memory params = IPoolManager.ModifyLiquidityParams({
-                liquidityDelta: int256(uint256(liquidity)),
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                salt: bytes32(0)
-            });
-
-            // Lock and add liquidity
-            BalanceDelta delta = abi.decode(
-                poolManager.unlock(abi.encode(CallbackData(msg.sender, key, params, 1, true))), (BalanceDelta)
-            );
-
-            token0Amount -= uint256(uint128(delta.amount0()));
-            token1Amount -= uint256(uint128(delta.amount1()));
-        }
+        _processLiquidity(key, params, currentSqrtPriceX96);
 
         // Refund remaining tokens to recipient
-        if (token0Amount > 0) {
-            IERC20Minimal(token0Address).transfer(recipient, token0Amount);
-            token0Amount = 0;
-        }
-
-        if (token1Amount > 0) {
-            IERC20Minimal(token1Address).transfer(recipient, token1Amount);
-            token1Amount = 0;
-        }
+        _refundRemainingTokens(params);
 
         // Emit an event with message details
         emit MessageReceived(
-            messageId,
-            sourceChainSelector,
-            sender,
-            "",
-            Client.EVMTokenAmount({token: address(0), amount: 0}) // Placeholder since we're not using token transfers directly through CCIP
+            messageId, sourceChainSelector, sender, "", Client.EVMTokenAmount({token: address(0), amount: 0})
         );
     }
 
@@ -537,6 +514,41 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     // Helpers
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
+    function _processLiquidity(PoolKey memory key, CCIPReceiveParams memory params, uint160 currentSqrtPriceX96)
+        private
+    {
+        uint160 lowerSqrtPriceX96 = TickMath.getSqrtPriceAtTick(params.tickLower);
+        uint160 upperSqrtPriceX96 = TickMath.getSqrtPriceAtTick(params.tickUpper);
+
+        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
+            currentSqrtPriceX96, lowerSqrtPriceX96, upperSqrtPriceX96, params.token0Amount, params.token1Amount
+        );
+
+        IPoolManager.ModifyLiquidityParams memory modifyParams = IPoolManager.ModifyLiquidityParams({
+            liquidityDelta: int256(uint256(liquidity)),
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper,
+            salt: bytes32(0)
+        });
+
+        BalanceDelta delta = abi.decode(
+            poolManager.unlock(abi.encode(CallbackData(msg.sender, key, modifyParams, 1, true))), (BalanceDelta)
+        );
+
+        params.token0Amount -= uint256(uint128(delta.amount0()));
+        params.token1Amount -= uint256(uint128(delta.amount1()));
+    }
+
+    function _refundRemainingTokens(CCIPReceiveParams memory params) private {
+        if (params.token0Amount > 0) {
+            IERC20Minimal(params.token0Address).transfer(params.recipient, params.token0Amount);
+        }
+
+        if (params.token1Amount > 0) {
+            IERC20Minimal(params.token1Address).transfer(params.recipient, params.token1Amount);
+        }
+    }
+
     // Function to calculate the liquidity amounts for each chain based on the selected strategy
     function _calculateLiquidityAmounts(Strategy storage strategy, uint256 liquidityAmount)
         internal
@@ -552,7 +564,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     function _calculateTokenAmounts(
-        PoolKey memory key,
         IPoolManager.ModifyLiquidityParams memory params,
         uint256 liquidity,
         uint160 sqrtPriceX96
