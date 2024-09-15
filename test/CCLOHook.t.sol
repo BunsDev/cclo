@@ -71,26 +71,6 @@ contract CCLOHookTest is Test, Fixtures {
         );
 
         ////////////////////////////////////////////////////////////////////////////////////////////////
-        // CCIP Setup
-        ////////////////////////////////////////////////////////////////////////////////////////////////
-        ccipLocalSimulator = new CCIPLocalSimulator();
-        (uint64 chainSelector, IRouterClient sourceRouter,,,, BurnMintERC677Helper ccipBnM,) =
-            ccipLocalSimulator.configuration();
-        destinationChainSelector = chainSelector;
-        ccipBnMToken = ccipBnM;
-        hookReceiverAddress = address(
-            uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG) ^ (0x8888 << 144) // Namespace the hook to avoid collisions
-        );
-        ////////////////////////////////////////////////////////////////////////////////////////////////
-
-        bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
-        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flags);
-        // just for CCIP test
-        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, hookReceiverAddress);
-        hookReceiver = CCLOHook(hookReceiverAddress);
-        // hookReceiverAddress = address(hookReceiver);
-        console.log("Hook Receiver address:", hookReceiverAddress);
-        ////////////////////////////////////////////////////////////////////////////////////////////////
         hook = CCLOHook(flags);
         hookAddress = address(hook);
         console.log("Hook address:", hookAddress);

@@ -330,9 +330,9 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             token1: token1,
             amount1: amount1,
             fee: 0, // You might want to set this appropriately
-            tickSpacing: 0, // You might want to set this appropriately
-            tickLower: 0, // You might want to set this appropriately
-            tickUpper: 0 // You might want to set this appropriately
+            tickSpacing: 1, // You might want to set this appropriately
+            tickLower: -1000, // You might want to set this appropriately
+            tickUpper: 1000 // You might want to set this appropriately
         });
         return _sendMessage(params);
     }
@@ -392,11 +392,12 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         bytes32 messageId = any2EvmMessage.messageId;
         uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector;
         address sender = abi.decode(any2EvmMessage.sender, (address));
+        receivedMessages.push(messageId);
 
         CCIPReceiveParams memory params;
         string memory message;
-        (params.recipient, params.fee, params.tickSpacing, params.tickLower, params.tickUpper, message) =
-            abi.decode(any2EvmMessage.data, (address, uint24, int24, int24, int24, string));
+        (params.recipient, params.fee, params.tickSpacing, params.tickLower, params.tickUpper) =
+            abi.decode(any2EvmMessage.data, (address, uint24, int24, int24, int24));
 
         Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
 
@@ -414,7 +415,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             tickSpacing: params.tickSpacing,
             hooks: IHooks(address(this))
         });
-
         PoolId poolId = key.toId();
 
         (uint160 currentSqrtPriceX96,,,) = poolManager.getSlot0(poolId);
@@ -450,11 +450,9 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
     function getReceivedMessageDetails(bytes32 messageId)
         external
-        view
         returns (
             uint64 sourceChainSelector,
             address sender,
-            string memory message,
             address token0,
             uint256 amount0,
             address token1,
@@ -470,7 +468,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         return (
             detail.sourceChainSelector,
             detail.sender,
-            detail.message,
             detail.token0,
             detail.amount0,
             detail.token1,
