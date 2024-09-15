@@ -24,7 +24,7 @@ import {
     CCIPLocalSimulator, IRouterClient, BurnMintERC677Helper
 } from "@chainlink/local/src/ccip/CCIPLocalSimulator.sol";
 
-contract CCLOHookTest is Test, Fixtures {
+contract CrossChainFunctionalityTest is Test, Fixtures {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     // CCIP Variables
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -91,50 +91,47 @@ contract CCLOHookTest is Test, Fixtures {
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 
-    function test_cannotAddLiquidity() public {
-        // Provide full-range liquidity to the pool
-        tickLower = TickMath.minUsableTick(key.tickSpacing);
-        tickUpper = TickMath.maxUsableTick(key.tickSpacing);
-        bytes4 mintSelector =
-            bytes4(keccak256("mint(PoolKey,int24,int24,uint256,uint256,uint256,address,uint256,bytes)"));
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    // CCIP Tests
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+    function test_TokensLeaveSourceChain() external {
+        deal(address(hookAddress), 1 ether);
+        ccipBnMToken.drip(address(hookAddress));
 
-        bytes memory _calldata = abi.encodeWithSelector(
-            mintSelector,
-            key,
-            tickLower,
-            tickUpper,
-            10_000e18,
-            MAX_SLIPPAGE_ADD_LIQUIDITY,
-            MAX_SLIPPAGE_ADD_LIQUIDITY,
-            address(this),
-            block.timestamp,
-            ZERO_BYTES
-        );
-        vm.expectRevert(bytes(""));
-        (bool revertsAsExpected,) = address(posm).call(_calldata);
-        assertTrue(revertsAsExpected, "expectRevert: call did not revert");
-    }
+        string memory messageToSend = "Hello, World!";
+        uint256 amountToSend = 100;
 
-    function test_AddLiquidityToStrategy1() public {
-        // Provide full-range liquidity to the pool
-        // Add some initial liquidity through the custom `addLiquidity` function
-        IERC20Minimal(Currency.unwrap(key.currency0)).approve(hookAddress, 1000 ether);
-        IERC20Minimal(Currency.unwrap(key.currency1)).approve(hookAddress, 1000 ether);
+        uint256 balanceOfSenderBefore = ccipBnMToken.balanceOf(address(hookAddress));
 
-        tickLower = TickMath.minUsableTick(key.tickSpacing);
-        tickUpper = TickMath.maxUsableTick(key.tickSpacing);
+        console.log("CCIP Token balance before:", balanceOfSenderBefore);
 
-        uint256 balance0Before = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
-        uint256 balance1Before = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
-
-        hook.addLiquidityWithCrossChainStrategy(
-            key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 1000e18, bytes32(0)), 1
+        // Send the cross-chain order
+        bytes32 messageId = hook.sendMessage(
+            destinationChainSelector,
+            address(0x1231231231231231231231231231231231231231), // random address so we transfer the tokens out
+            messageToSend,
+            address(ccipBnMToken),
+            amountToSend
         );
 
-        uint256 balance0After = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
-        uint256 balance1After = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
+        uint256 balanceOfSenderAfter = ccipBnMToken.balanceOf(address(hookAddress));
 
-        assertEq(balance0Before - balance0After, 999999999999999999946);
-        assertEq(balance1Before - balance1After, 999999999999999999946);
+        console.log("CCIP Token balance after:", balanceOfSenderAfter);
+        console.log("Message ID:", uint256(messageId));
+
+        // Assertions
+        assertEq(
+            balanceOfSenderAfter, balanceOfSenderBefore - amountToSend, "CCIP token balance not decreased correctly"
+        );
+        assertTrue(messageId != bytes32(0), "Message ID should not be zero");
+
+        // Check if the message was actually sent through the CCIP router
+        // Doesn't work because we do not have a message to receive! We've only sent the message "out".
+        // (uint64 sourceChainSelector, address sender, string memory message, address token, uint256 amount) = hook.getReceivedMessageDetails(messageId);
+        // assertEq(sourceChainSelector, destinationChainSelector, "Source chain selector does not match");
+        // assertEq(sender, address(hook), "Sender does not match");
+        // assertEq(message, messageToSend, "Message does not match");
+        // assertEq(token, address(ccipBnMToken), "Token does not match");
+        // assertEq(amount, amountToSend, "Amount does not match");
     }
 }
