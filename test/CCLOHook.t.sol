@@ -61,7 +61,7 @@ contract CCLOHookTest is Test, Fixtures {
     function setUp() public {
         // creates the pool manager, utility routers, and test tokens
         deployFreshManagerAndRouters();
-        (token0, token1) = deployMintAndApprove2Currencies();
+        deployMintAndApprove2Currencies();
 
         deployAndApprovePosm(manager);
 
@@ -71,6 +71,8 @@ contract CCLOHookTest is Test, Fixtures {
         );
 
         ////////////////////////////////////////////////////////////////////////////////////////////////
+        bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId, address(0xBEEF)); //Add all the necessary constructor arguments from the hook
+        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flags);
         hook = CCLOHook(flags);
         hookAddress = address(hook);
         console.log("Hook address:", hookAddress);
@@ -79,13 +81,12 @@ contract CCLOHookTest is Test, Fixtures {
         chainIds[0] = originalHookChainId;
         uint256[] memory percentages = new uint256[](1);
         percentages[0] = 100;
-        //        hook.addStrategy(0, chainIds, percentages);
 
         // Create the pool
         key = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
         poolId = key.toId();
-        hook.addStrategy(poolId, 1, chainIds, percentages);
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
+        hook.addStrategy(poolId, 1, chainIds, percentages);
     }
 
     function test_cannotAddLiquidity() public {
