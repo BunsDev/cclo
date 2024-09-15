@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
@@ -44,18 +43,20 @@ contract CCLOHookScript is Script {
     function setUp() public {}
 
     function run() public {
-//        vm.broadcast();
+        //        vm.broadcast();
         IPoolManager manager = IPoolManager(ETH_SEPOLIA_POOL_MANAGER); // taken from Haardik's deployment
         address authorizedUser = address(0xFEED);
 
         // hook contracts must have specific flags encoded in the address
-        uint160 permissions = uint160(
-            Hooks.BEFORE_ADD_LIQUIDITY_FLAG
-        );
+        uint160 permissions = uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
 
         // Mine a salt that will produce a hook address with the correct permissions
-        (address hookAddress, bytes32 salt) =
-            HookMiner.find(CREATE2_DEPLOYER, permissions, type(CCLOHook).creationCode, abi.encode(address(manager), authorizedUser, ETH_SEPOLIA_CHAIN_ID, address(ETH_SEPOLIA_CCIP_ROUTER)));
+        (address hookAddress, bytes32 salt) = HookMiner.find(
+            CREATE2_DEPLOYER,
+            permissions,
+            type(CCLOHook).creationCode,
+            abi.encode(address(manager), authorizedUser, ETH_SEPOLIA_CHAIN_ID, address(ETH_SEPOLIA_CCIP_ROUTER))
+        );
 
         // ----------------------------- //
         // Deploy the hook using CREATE2 //
@@ -63,6 +64,5 @@ contract CCLOHookScript is Script {
         vm.broadcast();
         CCLOHook hook = new CCLOHook{salt: salt}(manager, authorizedUser, ETH_SEPOLIA_CHAIN_ID, ETH_SEPOLIA_CCIP_ROUTER);
         require(address(hook) == hookAddress, "CCLOHookScript: ETH Sepolia hook address mismatch");
-
     }
 }

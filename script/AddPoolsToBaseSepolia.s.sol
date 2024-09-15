@@ -38,34 +38,45 @@ contract CCLOHookScript is Script {
     address constant ETH_SEPOLIA_CCIP_ROUTER = 0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59;
     address constant BASE_SEPOLIA_CCIP_ROUTER = 0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93;
     address constant OP_SEPOLIA_CCIP_ROUTER = 0x114A20A10b43D4115e5aeef7345a1A71d2a60C57;
+
+    address constant CCLO_HOOK_ADDRESS_BASE_SEPOLIA = 0x92Ad9c1b4B2edA09805Aa42a940648fBc0FeC800;
+    address constant CCLO_HOOK_ADDRESS_ETH_SEPOLIA = 0xFF1Ed25762614cc147937a59e91a98756cA24800;
+
+    // token addresses base
+    // CCIP - BNM = 0x88A2d74F47a237a62e7A51cdDa67270CE381555e
+    // USDC = 0x036CbD53842c5426634e7929541eC2318f3dCF7e
+    // eth
+    // CCIP - BNM = 0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05
+    // USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238
+
+    // USDC
+    address constant BASE_SEPOLIA_TOKEN0 = 0x036CbD53842c5426634e7929541eC2318f3dCF7e;
+    // BnM
+    address constant BASE_SEPOLIA_TOKEN1 = 0x88A2d74F47a237a62e7A51cdDa67270CE381555e;
+
+    // USDC
+    address constant ETH_SEPOLIA_TOKEN0 = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238;
+    // BnM
+    address constant ETH_SEPOLIA_TOKEN1 = 0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05;
     //////////////////////////////////////////////////////////////
+
+    uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
+    bytes constant ZERO_BYTES = new bytes(0);
 
     function setUp() public {}
 
     function run() public {
-        //        vm.broadcast();
-        IPoolManager manager = IPoolManager(BASE_SEPOLIA_POOL_MANAGER); // taken from Haardik's deployment
-        address authorizedUser = address(0xFEED);
+        address token0 = BASE_SEPOLIA_TOKEN0;
+        address token1 = BASE_SEPOLIA_TOKEN1;
 
-        // hook contracts must have specific flags encoded in the address
-        uint160 permissions = uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG);
+        IPoolManager manager = IPoolManager(BASE_SEPOLIA_POOL_MANAGER);
+        CCLOHook hook = CCLOHook(CCLO_HOOK_ADDRESS_BASE_SEPOLIA);
 
-        // Mine a salt that will produce a hook address with the correct permissions
-        (address hookAddress, bytes32 salt) = HookMiner.find(
-            CREATE2_DEPLOYER,
-            permissions,
-            type(CCLOHook).creationCode,
-            abi.encode(address(manager), authorizedUser, BASE_SEPOLIA_CHAIN_ID, address(BASE_SEPOLIA_CCIP_ROUTER))
-        );
+        Currency currency0 = Currency.wrap(address(token0));
+        Currency currency1 = Currency.wrap(address(token1));
 
-        // ----------------------------- //
-        // Deploy the hook using CREATE2 //
-        // ----------------------------- //
+        PoolKey memory key = PoolKey(currency0, currency1, 3000, 60, IHooks(CCLO_HOOK_ADDRESS_BASE_SEPOLIA));
         vm.broadcast();
-        CCLOHook hook =
-            new CCLOHook{salt: salt}(manager, authorizedUser, BASE_SEPOLIA_CHAIN_ID, BASE_SEPOLIA_CCIP_ROUTER);
-        require(address(hook) == hookAddress, "CCLOHookScript: Base Sepolia hook address mismatch");
-
-        //        hook.addStrategy(poolId, 1, chainIds, percentages, selectors, hooks);
+        manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
     }
 }
