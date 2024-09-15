@@ -8,6 +8,7 @@ env:
 jobs:
   check:
     strategy:
+      matrix: .env
       fail-fast: true
 
     name: Foundry project
