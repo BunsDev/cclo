@@ -62,7 +62,9 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     // Event emitted when a new strategy is added
-    event StrategyAdded(PoolId poolId, uint256 strategyId, uint256[] chainIds, uint256[] liquidityPercentages);
+    event StrategyAdded(
+        PoolId poolId, uint256 strategyId, uint256[] chainIds, uint256[] liquidityPercentages, address[] hooks
+    );
 
     // Event emitted when a message is sent to another chain.
     // The chain selector of the destination chain.
@@ -114,6 +116,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256[] chainIds;
         uint256[] percentages;
         uint64[] chainSelectors;
+        address[] hooks;
     }
 
     // Struct to hold details of a message.
@@ -131,6 +134,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     struct CCIPReceiveParams {
+        address sender;
         address recipient;
         uint24 fee;
         int24 tickSpacing;
@@ -145,6 +149,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     struct SendMessageParams {
         uint64 destinationChainSelector;
         address receiver;
+        address sender;
         address token0;
         uint256 amount0;
         address token1;
@@ -256,9 +261,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         );
     }
 
-    /// @notice Callback function invoked during the unlock of liquidity, executing any required state changes.
-    /// @param rawData Encoded data containing details for the unlock operation.
-    /// @return Encoded result of the liquidity modification.
+    event Log(uint256 amount0, uint256 amount1);
+    event Log2(string message);
 
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
@@ -290,8 +294,20 @@ contract CCLOHook is CCIPReceiver, BaseHook {
                 if (strategy.chainIds[i] != hookChainId) {
                     (uint256 amount0, uint256 amount1) =
                         _calculateTokenAmounts(params, liquidityAmounts[i], sqrtPriceX96);
+
+                    emit Log(amount0, amount1);
+                    emit Log2("Amount0");
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
-                    _transferCrossChain(strategy.chainSelectors[i], key, amount0, amount1, sender);
+                    _transferCrossChain(
+                        sender,
+                        strategy.hooks[i],
+                        strategy.chainSelectors[i],
+                        key,
+                        amount0,
+                        amount1,
+                        params.tickLower,
+                        params.tickUpper
+                    );
                 }
             }
 
@@ -310,6 +326,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
     function sendMessage(
         uint64 destinationChainSelector,
+        address sender,
         address receiver,
         address token0,
         uint256 amount0,
@@ -323,6 +340,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         SendMessageParams memory params = SendMessageParams({
             destinationChainSelector: destinationChainSelector,
             receiver: receiver,
+            sender: sender,
             token0: token0,
             amount0: amount0,
             token1: token1,
@@ -338,7 +356,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     function _sendMessage(SendMessageParams memory params) internal returns (bytes32 messageId) {
         // Encode the message data
         bytes memory encodedMessage =
-            abi.encode(params.receiver, params.fee, params.tickSpacing, params.tickLower, params.tickUpper);
+            abi.encode(params.sender, params.fee, params.tickSpacing, params.tickLower, params.tickUpper);
 
         // Set the token amounts
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](2);
@@ -564,11 +582,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
     function _refundRemainingTokens(CCIPReceiveParams memory params) private {
         if (params.token0Amount > 0) {
-            IERC20Minimal(params.token0Address).transfer(params.recipient, params.token0Amount);
+            IERC20Minimal(params.token0Address).transfer(params.sender, params.token0Amount);
         }
 
         if (params.token1Amount > 0) {
-            IERC20Minimal(params.token1Address).transfer(params.recipient, params.token1Amount);
+            IERC20Minimal(params.token1Address).transfer(params.sender, params.token1Amount);
         }
     }
 
@@ -610,35 +628,35 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     function _transferCrossChain(
+        address sender,
+        address hook,
         uint64 destinationChainSelector,
         PoolKey memory key,
         uint256 amount0,
         uint256 amount1,
-        address recipient
+        int24 tickLower,
+        int24 tickUpper
     ) internal {
         // Get the current tick from the pool
         (, int24 tick,,) = poolManager.getSlot0(key.toId());
 
-        // TODO: Fix these
-        // Calculate the tick range (this is an example, adjust as needed)
-        int24 tickSpacing = key.tickSpacing;
-        int24 tickLower = tick - tickSpacing;
-        int24 tickUpper = tick + tickSpacing;
-
         //        token.approve(address(gateway), amount);
         //        token.transferFrom(sender, address(this), amount);
-        IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(recipient, address(this), amount0);
-        IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(recipient, address(this), amount1);
+        //        poolManager.take(key.currency0, address(this), amount0);
+        //        poolManager.take(key.currency1, address(this), amount1);
+        IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(sender, address(this), amount0);
+        IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(sender, address(this), amount1);
 
         SendMessageParams memory params = SendMessageParams({
             destinationChainSelector: uint64(destinationChainSelector),
-            receiver: recipient,
+            receiver: hook,
+            sender: sender,
             token0: Currency.unwrap(key.currency0),
             amount0: amount0,
             token1: Currency.unwrap(key.currency1),
             amount1: amount1,
             fee: key.fee,
-            tickSpacing: tickSpacing,
+            tickSpacing: key.tickSpacing,
             tickLower: tickLower,
             tickUpper: tickUpper
         });
@@ -666,7 +684,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 strategyId,
         uint256[] memory chainIds,
         uint256[] memory liquidityPercentages,
-        uint64[] memory chainSelectors
+        uint64[] memory chainSelectors,
+        address[] memory hooks
     ) public {
         // Check that the strategy ID is not already in use for this pool
         require(strategies[poolId][strategyId].chainIds.length == 0, "Strategy ID already in use for this pool");
@@ -685,10 +704,14 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         require(totalLiquidityPercentage == 100, "Liquidity percentages must add up to 100");
 
         // Add the new strategy to the strategies mapping
-        strategies[poolId][strategyId] =
-            Strategy({chainIds: chainIds, percentages: liquidityPercentages, chainSelectors: chainSelectors});
+        strategies[poolId][strategyId] = Strategy({
+            chainIds: chainIds,
+            percentages: liquidityPercentages,
+            chainSelectors: chainSelectors,
+            hooks: hooks
+        });
 
         // Emit an event to notify that a new strategy has been added
-        emit StrategyAdded(poolId, strategyId, chainIds, liquidityPercentages);
+        emit StrategyAdded(poolId, strategyId, chainIds, liquidityPercentages, hooks);
     }
 }

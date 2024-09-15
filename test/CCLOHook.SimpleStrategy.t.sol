@@ -83,12 +83,14 @@ contract CCLOHookTest is Test, Fixtures {
         percentages[0] = 100;
         uint64[] memory selectors = new uint64[](1);
         selectors[0] = 1;
+        address[] memory hooks = new address[](1);
+        hooks[0] = address(0xdd0d);
 
         // Create the pool
         key = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
         poolId = key.toId();
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
-        hook.addStrategy(poolId, 1, chainIds, percentages, selectors);
+        hook.addStrategy(poolId, 1, chainIds, percentages, selectors, hooks);
     }
 
     function test_cannotAddLiquidity() public {
@@ -128,13 +130,13 @@ contract CCLOHookTest is Test, Fixtures {
         uint256 balance1Before = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
         hook.addLiquidityWithCrossChainStrategy(
-            key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 10000, bytes32(0)), 1
+            key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 10_000_000, bytes32(0)), 1
         );
 
         uint256 balance0After = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
         uint256 balance1After = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
-        assertEq(balance0Before - balance0After, 10000);
-        assertEq(balance1Before - balance1After, 10000);
+        assertEq(balance0Before - balance0After, 10_000_000);
+        assertEq(balance1Before - balance1After, 10_000_000);
     }
 }

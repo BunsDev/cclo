@@ -135,7 +135,11 @@ contract CCLOHookTest is Test, Fixtures {
         uint64[] memory selectors = new uint64[](2);
         selectors[0] = chainSelector;
         selectors[1] = chainSelector;
-        hookSource.addStrategy(poolId, 1, chainIds, percentages, selectors);
+
+        address[] memory hooks = new address[](2);
+        hooks[0] = hookAddressSource;
+        hooks[1] = hookAddressDestination;
+        hookSource.addStrategy(poolId, 1, chainIds, percentages, selectors, hooks);
     }
 
     function test_AddLiquidityToCrossChainStrategy() public {
@@ -154,14 +158,45 @@ contract CCLOHookTest is Test, Fixtures {
         uint256 balance0Before = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
         uint256 balance1Before = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
+        //        uint256 balance0BeforeHook = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(hookSource));
+        //        uint256 balance1BeforeHook = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(hookSource));
+        //
+        //        uint256 balance0BeforeRouter = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(sourceRouterAddress));
+        //        uint256 balance1BeforeRouter = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(sourceRouterAddress));
+
+        uint256 balance0BeforeManager = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(manager));
+        uint256 balance1BeforeManager = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(manager));
+
         hookSource.addLiquidityWithCrossChainStrategy(
             key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 10_000_000, bytes32(0)), 1
         );
 
+        uint256 balance0AfterManager = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(manager));
+        uint256 balance1AfterManager = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(manager));
+        //
+        //        uint256 balance0AfterRouter = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(sourceRouterAddress));
+        //        uint256 balance1AfterRouter = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(sourceRouterAddress));
+        //
+        //        uint256 balance0AfterHook = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(hookSource));
+        //        uint256 balance1AfterHook = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(hookSource));
+
         uint256 balance0After = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
         uint256 balance1After = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
-        assertEq(balance0Before - balance0After, 4_000_000);
-        assertEq(balance1Before - balance1After, 4_000_000);
+        //        console.log("Balance0BeforeHook", balance0BeforeHook);
+        //        console.log("Balance1BeforeHook", balance1BeforeHook);
+        //        console.log("Balance0AfterHook", balance0AfterHook);
+        //        console.log("Balance1AfterHook", balance1AfterHook);
+        //        console.log("Balance0BeforeRouter", balance0BeforeRouter);
+        //        console.log("Balance1BeforeRouter", balance1BeforeRouter);
+        //        console.log("Balance0AfterRouter", balance0AfterRouter);
+        //        console.log("Balance1AfterRouter", balance1AfterRouter);
+        console.log("Balance0BeforeManager", balance0BeforeManager);
+        console.log("Balance1BeforeManager", balance1BeforeManager);
+        console.log("Balance0AfterManager", balance0AfterManager);
+        console.log("Balance1AfterManager", balance1AfterManager);
+
+        assertEq(balance0Before - balance0After, 10_000_000);
+        assertEq(balance1Before - balance1After, 10_000_000);
     }
 }
