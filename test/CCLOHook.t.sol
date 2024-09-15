@@ -19,6 +19,8 @@ import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol
 import {EasyPosm} from "./utils/EasyPosm.sol";
 import {Fixtures} from "./utils/Fixtures.sol";
 
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+
 // CCIP
 import {
     CCIPLocalSimulator, IRouterClient, BurnMintERC677Helper
@@ -31,6 +33,8 @@ contract CCLOHookTest is Test, Fixtures {
     CCIPLocalSimulator public ccipLocalSimulator;
     uint64 public destinationChainSelector;
     BurnMintERC677Helper public ccipBnMToken;
+    CCLOHook hookReceiver;
+    address hookReceiverAddress;
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     using EasyPosm for IPositionManager;
@@ -41,6 +45,10 @@ contract CCLOHookTest is Test, Fixtures {
     CCLOHook hook;
     address hookAddress;
     PoolId poolId;
+
+    // The two currencies (tokens) from the pool
+    Currency token0;
+    Currency token1;
 
     address authorizedUser = address(0xFEED);
     uint256 originalHookChainId = 1;
@@ -53,7 +61,7 @@ contract CCLOHookTest is Test, Fixtures {
     function setUp() public {
         // creates the pool manager, utility routers, and test tokens
         deployFreshManagerAndRouters();
-        deployMintAndApprove2Currencies();
+        (token0, token1) = deployMintAndApprove2Currencies();
 
         deployAndApprovePosm(manager);
 
@@ -70,10 +78,19 @@ contract CCLOHookTest is Test, Fixtures {
             ccipLocalSimulator.configuration();
         destinationChainSelector = chainSelector;
         ccipBnMToken = ccipBnM;
+        hookReceiverAddress = address(
+            uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG) ^ (0x8888 << 144) // Namespace the hook to avoid collisions
+        );
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
         bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flags);
+        // just for CCIP test
+        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, hookReceiverAddress);
+        hookReceiver = CCLOHook(hookReceiverAddress);
+        // hookReceiverAddress = address(hookReceiver);
+        console.log("Hook Receiver address:", hookReceiverAddress);
+        ////////////////////////////////////////////////////////////////////////////////////////////////
         hook = CCLOHook(flags);
         hookAddress = address(hook);
         console.log("Hook address:", hookAddress);
@@ -144,29 +161,52 @@ contract CCLOHookTest is Test, Fixtures {
     function test_TokensLeaveSourceChain() external {
         deal(address(hookAddress), 1 ether);
         ccipBnMToken.drip(address(hookAddress));
-
+        
+        // Transfer tokens to the hook address
+        token0.transfer(address(hookAddress), 1000e18);
+        token1.transfer(address(hookAddress), 1000e18);
+        
+         // Approve our hook address to spend these tokens as well
+        MockERC20(Currency.unwrap(token0)).approve(
+            address(hook),
+            type(uint256).max
+        );
+        MockERC20(Currency.unwrap(token1)).approve(
+            address(hook),
+            type(uint256).max
+        );
+        
         string memory messageToSend = "Hello, World!";
-        uint256 amountToSend = 100;
+        uint256 amount0ToSend = 100;
+        uint256 amount1ToSend = 500;
 
-        uint256 balanceOfSenderBefore = ccipBnMToken.balanceOf(address(hookAddress));
-
-        console.log("CCIP Token balance before:", balanceOfSenderBefore);
+        uint256 token0BalanceOfSenderBefore = token0.balanceOf(address(hookAddress));
+        uint256 token1BalanceOfSenderBefore = token1.balanceOf(address(hookAddress));
+        
+        console.log("Token0 balance before:", token0BalanceOfSenderBefore);
+        console.log("Token1 balance before:", token1BalanceOfSenderBefore);
 
         // Send the cross-chain order
         bytes32 messageId = hook.sendMessage(
             destinationChainSelector,
-            address(0x1231231231231231231231231231231231231231), // random address so we transfer the tokens out
+            address(hookReceiver), 
             messageToSend,
-            address(ccipBnMToken),
-            amountToSend
+            address(Currency.unwrap(token0)),
+            amount0ToSend,
+            address(Currency.unwrap(token1)),
+            amount1ToSend
         );
 
-        uint256 balanceOfSenderAfter = ccipBnMToken.balanceOf(address(hookAddress));
+        uint256 token0BalanceOfSenderAfter = token0.balanceOf(address(hookAddress));
+        uint256 token1BalanceOfSenderAfter = token1.balanceOf(address(hookAddress));
 
-        console.log("CCIP Token balance after:", balanceOfSenderAfter);
+        console.log("Token0 balance after:", token0BalanceOfSenderAfter);
+        console.log("Token1 balance after:", token1BalanceOfSenderAfter);
+
         console.log("Message ID:", uint256(messageId));
 
         // Assertions
+<<<<<<< Updated upstream
         assertEq(
             balanceOfSenderAfter, balanceOfSenderBefore - amountToSend, "CCIP token balance not decreased correctly"
         );
@@ -180,5 +220,74 @@ contract CCLOHookTest is Test, Fixtures {
         // assertEq(message, messageToSend, "Message does not match");
         // assertEq(token, address(ccipBnMToken), "Token does not match");
         // assertEq(amount, amountToSend, "Amount does not match");
+=======
+        assertEq(token0BalanceOfSenderAfter, token0BalanceOfSenderBefore - amount0ToSend, "Token0 balance not decreased correctly");
+        assertEq(token1BalanceOfSenderAfter, token1BalanceOfSenderBefore - amount1ToSend, "Token1 balance not decreased correctly");
+        assertTrue(messageId != bytes32(0), "Message ID should not be zero");
+>>>>>>> Stashed changes
     }
+    
+    function test_TokensLeaveSenderAndReceivedByReceiverCCIP() external {
+                deal(address(hookAddress), 1 ether);
+        ccipBnMToken.drip(address(hookAddress));
+        
+        // Transfer tokens to the hook address
+        token0.transfer(address(hookAddress), 1000e18);
+        token1.transfer(address(hookAddress), 1000e18);
+        
+         // Approve our hook address to spend these tokens as well
+        MockERC20(Currency.unwrap(token0)).approve(
+            address(hook),
+            type(uint256).max
+        );
+        MockERC20(Currency.unwrap(token1)).approve(
+            address(hook),
+            type(uint256).max
+        );
+        
+        string memory messageToSend = "Hello, World!";
+        uint256 amount0ToSend = 100;
+        uint256 amount1ToSend = 500;
+
+        uint256 token0BalanceOfSenderBefore = token0.balanceOf(address(hookAddress));
+        uint256 token1BalanceOfSenderBefore = token1.balanceOf(address(hookAddress));
+        
+        console.log("Token0 balance before:", token0BalanceOfSenderBefore);
+        console.log("Token1 balance before:", token1BalanceOfSenderBefore);
+
+        // Send the cross-chain order
+        bytes32 messageId = hook.sendMessage(
+            destinationChainSelector,
+            address(hookReceiver), 
+            messageToSend,
+            address(Currency.unwrap(token0)),
+            amount0ToSend,
+            address(Currency.unwrap(token1)),
+            amount1ToSend
+        );
+
+        uint256 token0BalanceOfSenderAfter = token0.balanceOf(address(hookAddress));
+        uint256 token1BalanceOfSenderAfter = token1.balanceOf(address(hookAddress));
+
+        console.log("Token0 balance after:", token0BalanceOfSenderAfter);
+        console.log("Token1 balance after:", token1BalanceOfSenderAfter);
+
+        console.log("Message ID:");
+        console.logBytes32((messageId));
+
+        // Assertions
+        assertEq(token0BalanceOfSenderAfter, token0BalanceOfSenderBefore - amount0ToSend, "Token0 balance not decreased correctly");
+        assertEq(token1BalanceOfSenderAfter, token1BalanceOfSenderBefore - amount1ToSend, "Token1 balance not decreased correctly");
+        assertTrue(messageId != bytes32(0), "Message ID should not be zero");
+        
+        // Check if the message was actually sent through the CCIP router
+        (uint64 sourceChainSelector, address sender, string memory message, address token0MsgAddr, uint256 amount0, address token1MsgAddr, uint256 amount1) = hookReceiver.getReceivedMessageDetails(messageId);
+        assertEq(sourceChainSelector, destinationChainSelector, "Source chain selector does not match");
+        assertEq(sender, address(hook), "Sender does not match");
+        assertEq(message, messageToSend, "Message does not match");
+        assertEq(address(Currency.unwrap(token0)), address(token0MsgAddr), "Token0 does not match");        
+        assertEq(amount0, amount0ToSend, "Amount0 does not match");
+        assertEq(address(Currency.unwrap(token1)), address(token1MsgAddr), "Token1 does not match");
+        assertEq(amount1, amount1ToSend, "Amount1 does not match");
+    }   
 }

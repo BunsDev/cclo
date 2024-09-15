@@ -68,14 +68,16 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     // The chain selector of the destination chain.
     // The address of the receiver on the destination chain.
     // The message being sent.
-    // The token amount that was sent.
+    // The token0 amount that was sent.
+    // The token1 amount that was sent.
     // The fees paid for sending the message.
     event MessageSent( // The unique ID of the message.
         bytes32 indexed messageId,
         uint64 indexed destinationChainSelector,
         address receiver,
         string message,
-        Client.EVMTokenAmount tokenAmount,
+        Client.EVMTokenAmount tokenAmount0,
+        Client.EVMTokenAmount tokenAmount1,
         uint256 fees
     );
 
@@ -89,7 +91,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint64 indexed sourceChainSelector,
         address sender,
         string message,
-        Client.EVMTokenAmount tokenAmount
+        Client.EVMTokenAmount tokenAmount0,
+        Client.EVMTokenAmount tokenAmount1
     );
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -119,8 +122,10 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint64 sourceChainSelector; // The chain selector of the source chain.
         address sender; // The address of the sender.
         string message; // The content of the message.
-        address token; // received token.
-        uint256 amount; // received amount.
+        address token0; // received token0.
+        uint256 amount0; // received amount0.
+        address token1; // received token1.
+        uint256 amount1; // received amount.
     }
 
     struct CCIPReceiveParams {
@@ -323,20 +328,32 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     /// @param destinationChainSelector The identifier (aka selector) for the destination blockchain.
     /// @param receiver The address of the recipient on the destination blockchain.
     /// @param message The string message to be sent.
-    /// @param token token address.
-    /// @param amount token amount.
+    /// @param token0 token0 address.
+    /// @param amount0 token0 amount.
+    /// @param token1 token1 address.
+    /// @param amount1 token1 amount.
     /// @return messageId The ID of the message that was sent.
     function sendMessage(
         uint64 destinationChainSelector,
         address receiver,
         string calldata message,
-        address token,
-        uint256 amount
+        address token0,
+        uint256 amount0,
+        address token1,
+        uint256 amount1
     ) external returns (bytes32 messageId) {
         // set the token amounts
+<<<<<<< Updated upstream
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
         Client.EVMTokenAmount memory tokenAmount = Client.EVMTokenAmount({token: token, amount: amount});
         tokenAmounts[0] = tokenAmount;
+=======
+        Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](2);
+        Client.EVMTokenAmount memory tokenAmount0 = Client.EVMTokenAmount({token: token0, amount: amount0});
+        Client.EVMTokenAmount memory tokenAmount1 = Client.EVMTokenAmount({token: token1, amount: amount1});
+        tokenAmounts[0] = tokenAmount0;
+        tokenAmounts[1] = tokenAmount1;
+>>>>>>> Stashed changes
         // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
         Client.EVM2AnyMessage memory evm2AnyMessage = Client.EVM2AnyMessage({
             receiver: abi.encode(receiver), // ABI-encoded receiver address
@@ -352,7 +369,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         IRouterClient router = IRouterClient(this.getRouter());
 
         // approve the Router to spend tokens on contract's behalf. I will spend the amount of the given token
-        IERC20Minimal(token).approve(address(router), amount);
+        IERC20Minimal(token0).approve(address(router), amount0);
+        IERC20Minimal(token1).approve(address(router), amount1);
 
         // Get the fee required to send the message
         uint256 fees = router.getFee(destinationChainSelector, evm2AnyMessage);
@@ -364,13 +382,14 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         messageId = router.ccipSend{value: fees}(destinationChainSelector, evm2AnyMessage);
 
         // Emit an event with message details
-        emit MessageSent(messageId, destinationChainSelector, receiver, message, tokenAmount, fees);
+        emit MessageSent(messageId, destinationChainSelector, receiver, message, tokenAmount0, tokenAmount1, fees);
 
         // Return the message ID
         return messageId;
     }
 
     /// handle a received message
+<<<<<<< Updated upstream
     //    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
     //        bytes32 messageId = any2EvmMessage.messageId; // fetch the messageId
     //        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector; // fetch the source chain identifier (aka selector)
@@ -423,6 +442,23 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         emit MessageReceived(
             messageId, sourceChainSelector, sender, "", Client.EVMTokenAmount({token: address(0), amount: 0})
         );
+=======
+    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
+        bytes32 messageId = any2EvmMessage.messageId; // fetch the messageId
+        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector; // fetch the source chain identifier (aka selector)
+        address sender = abi.decode(any2EvmMessage.sender, (address)); // abi-decoding of the sender address
+        Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
+        address token0 = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        uint256 amount0 = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        address token1 = tokenAmounts[1].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        uint256 amount1 = tokenAmounts[1].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
+        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
+        receivedMessages.push(messageId);
+        Message memory detail = Message(sourceChainSelector, sender, message, token0, amount0, token1, amount1);
+        messageDetail[messageId] = detail;
+
+        emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0], tokenAmounts[1]);
+>>>>>>> Stashed changes
     }
 
     /// @notice Get the total number of received messages.
@@ -437,16 +473,18 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     /// @return sourceChainSelector The source chain identifier (aka selector).
     /// @return sender The address of the sender.
     /// @return message The received message.
-    /// @return token The received token.
-    /// @return amount The received token amount.
+    /// @return token0 The received token0.
+    /// @return amount0 The received token0 amount.
+    /// @return token1 The received token1.
+    /// @return amount1 The received token1 amount.
     function getReceivedMessageDetails(bytes32 messageId)
         external
         view
-        returns (uint64 sourceChainSelector, address sender, string memory message, address token, uint256 amount)
+        returns (uint64 sourceChainSelector, address sender, string memory message, address token0, uint256 amount0, address token1, uint256 amount1)
     {
         Message memory detail = messageDetail[messageId];
         if (detail.sender == address(0)) revert MessageIdNotExist(messageId);
-        return (detail.sourceChainSelector, detail.sender, detail.message, detail.token, detail.amount);
+        return (detail.sourceChainSelector, detail.sender, detail.message, detail.token0, detail.amount0, detail.token1, detail.amount1);
     }
 
     /// @notice Fetches details of a received message by its position in the received messages list.
@@ -456,8 +494,10 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     /// @return sourceChainSelector The source chain identifier (aka selector).
     /// @return sender The address of the sender.
     /// @return message The received message.
-    /// @return token The received token.
-    /// @return amount The received token amount.
+    /// @return token0 The received token0.
+    /// @return amount0 The received token0 amount.
+    /// @return token1 The received token1.
+    /// @return amount1 The received token1 amount.
     function getReceivedMessageAt(uint256 index)
         external
         view
@@ -466,8 +506,10 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             uint64 sourceChainSelector,
             address sender,
             string memory message,
-            address token,
-            uint256 amount
+            address token0,
+            uint256 amount0,
+            address token1,
+            uint256 amount1
         )
     {
         if (index >= receivedMessages.length) {
@@ -475,7 +517,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         }
         messageId = receivedMessages[index];
         Message memory detail = messageDetail[messageId];
-        return (messageId, detail.sourceChainSelector, detail.sender, detail.message, detail.token, detail.amount);
+        return (messageId, detail.sourceChainSelector, detail.sender, detail.message, detail.token0, detail.amount0, detail.token1, detail.amount1);
     }
 
     /// @notice Fetches the details of the last received message.
@@ -484,8 +526,10 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     /// @return sourceChainSelector The source chain identifier (aka selector) of the last received message.
     /// @return sender The address of the sender of the last received message.
     /// @return message The last received message.
-    /// @return token The last transferred token.
-    /// @return amount The last transferred token amount.
+    /// @return token0 The last transferred token0.
+    /// @return amount0 The last transferred token0 amount.
+    /// @return token1 The last transferred token1.
+    /// @return amount1 The last transferred token1 amount.
     function getLastReceivedMessageDetails()
         external
         view
@@ -494,8 +538,10 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             uint64 sourceChainSelector,
             address sender,
             string memory message,
-            address token,
-            uint256 amount
+            address token0,
+            uint256 amount0,
+            address token1,
+            uint256 amount1
         )
     {
         // Revert if no messages have been received
@@ -507,7 +553,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         // Fetch the details of the last received message
         Message memory detail = messageDetail[messageId];
 
-        return (messageId, detail.sourceChainSelector, detail.sender, detail.message, detail.token, detail.amount);
+        return (messageId, detail.sourceChainSelector, detail.sender, detail.message, detail.token0, detail.amount0, detail.token1, detail.amount1);
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
