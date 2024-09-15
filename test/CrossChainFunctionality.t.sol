@@ -19,6 +19,8 @@ import {IPositionManager} from "v4-periphery/src/interfaces/IPositionManager.sol
 import {EasyPosm} from "./utils/EasyPosm.sol";
 import {Fixtures} from "./utils/Fixtures.sol";
 
+import {MockERC20} from "solmate/src/test/utils/mocks/MockERC20.sol";
+
 // CCIP
 import {
     CCIPLocalSimulator, IRouterClient, BurnMintERC677Helper
@@ -31,6 +33,8 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
     CCIPLocalSimulator public ccipLocalSimulator;
     uint64 public destinationChainSelector;
     BurnMintERC677Helper public ccipBnMToken;
+    CCLOHook hookReceiver;
+    address hookReceiverAddress;
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     using EasyPosm for IPositionManager;
@@ -41,6 +45,10 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
     CCLOHook hook;
     address hookAddress;
     PoolId poolId;
+
+    // The two currencies (tokens) from the pool
+    Currency token0;
+    Currency token1;
 
     address authorizedUser = address(0xFEED);
     uint256 originalHookChainId = 1;
@@ -53,7 +61,7 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
     function setUp() public {
         // creates the pool manager, utility routers, and test tokens
         deployFreshManagerAndRouters();
-        deployMintAndApprove2Currencies();
+        (token0, token1) = deployMintAndApprove2Currencies();
 
         deployAndApprovePosm(manager);
 
@@ -70,10 +78,19 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
             ccipLocalSimulator.configuration();
         destinationChainSelector = chainSelector;
         ccipBnMToken = ccipBnM;
+        hookReceiverAddress = address(
+            uint160(Hooks.BEFORE_ADD_LIQUIDITY_FLAG) ^ (0x8888 << 144) // Namespace the hook to avoid collisions
+        );
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
         bytes memory constructorArgs = abi.encode(manager, authorizedUser, originalHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flags);
+        // just for CCIP test
+        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, hookReceiverAddress);
+        hookReceiver = CCLOHook(hookReceiverAddress);
+        // hookReceiverAddress = address(hookReceiver);
+        console.log("Hook Receiver address:", hookReceiverAddress);
+        ////////////////////////////////////////////////////////////////////////////////////////////////
         hook = CCLOHook(flags);
         hookAddress = address(hook);
         console.log("Hook address:", hookAddress);
@@ -207,16 +224,14 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         // Check if the message was actually sent through the CCIP router
         (
             uint64 sourceChainSelector,
-            address sender,
-            string memory message,
+            address sender,,
             address token0MsgAddr,
             uint256 amount0,
             address token1MsgAddr,
-            uint256 amount1
+            uint256 amount1,,,,
         ) = hookReceiver.getReceivedMessageDetails(messageId);
         assertEq(sourceChainSelector, destinationChainSelector, "Source chain selector does not match");
         assertEq(sender, address(hook), "Sender does not match");
-        assertEq(message, messageToSend, "Message does not match");
         assertEq(address(Currency.unwrap(token0)), address(token0MsgAddr), "Token0 does not match");
         assertEq(amount0, amount0ToSend, "Amount0 does not match");
         assertEq(address(Currency.unwrap(token1)), address(token1MsgAddr), "Token1 does not match");

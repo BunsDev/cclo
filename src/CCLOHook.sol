@@ -119,13 +119,17 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
     // Struct to hold details of a message.
     struct Message {
-        uint64 sourceChainSelector; // The chain selector of the source chain.
-        address sender; // The address of the sender.
-        string message; // The content of the message.
-        address token0; // received token0.
-        uint256 amount0; // received amount0.
-        address token1; // received token1.
-        uint256 amount1; // received amount.
+        uint64 sourceChainSelector;
+        address sender;
+        string message;
+        address token0;
+        uint256 amount0;
+        address token1;
+        uint256 amount1;
+        uint24 fee;
+        int24 tickSpacing;
+        int24 tickLower;
+        int24 tickUpper;
     }
 
     struct CCIPReceiveParams {
@@ -138,6 +142,20 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 token0Amount;
         address token1Address;
         uint256 token1Amount;
+    }
+
+    struct SendMessageParams {
+        uint64 destinationChainSelector;
+        address receiver;
+        string message;
+        address token0;
+        uint256 amount0;
+        address token1;
+        uint256 amount1;
+        uint24 fee;
+        int24 tickSpacing;
+        int24 tickLower;
+        int24 tickUpper;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -294,61 +312,76 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     // CCIP Sending and Receiving
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// @notice Sends data to receiver on the destination chain.
-    /// @dev Assumes your contract has sufficient native asset (e.g, ETH on Ethereum, MATIC on Polygon...).
-    /// @param destinationChainSelector The identifier (aka selector) for the destination blockchain.
-    /// @param receiver The address of the recipient on the destination blockchain.
-    /// @param message The string message to be sent.
-    /// @param token0 token0 address.
-    /// @param amount0 token0 amount.
-    /// @param token1 token1 address.
-    /// @param amount1 token1 amount.
-    /// @return messageId The ID of the message that was sent.
     function sendMessage(
         uint64 destinationChainSelector,
         address receiver,
-        string calldata message,
+        string memory message,
         address token0,
         uint256 amount0,
         address token1,
         uint256 amount1
     ) external returns (bytes32 messageId) {
-        // set the token amounts
-        Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](2);
-        Client.EVMTokenAmount memory tokenAmount0 = Client.EVMTokenAmount({token: token0, amount: amount0});
-        Client.EVMTokenAmount memory tokenAmount1 = Client.EVMTokenAmount({token: token1, amount: amount1});
-        tokenAmounts[0] = tokenAmount0;
-        tokenAmounts[1] = tokenAmount1;
+        SendMessageParams memory params = SendMessageParams({
+            destinationChainSelector: destinationChainSelector,
+            receiver: receiver,
+            message: message,
+            token0: token0,
+            amount0: amount0,
+            token1: token1,
+            amount1: amount1,
+            fee: 0, // You might want to set this appropriately
+            tickSpacing: 0, // You might want to set this appropriately
+            tickLower: 0, // You might want to set this appropriately
+            tickUpper: 0 // You might want to set this appropriately
+        });
+        return _sendMessage(params);
+    }
 
-        // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
+    function _sendMessage(SendMessageParams memory params) internal returns (bytes32 messageId) {
+        // Encode the message data
+        bytes memory encodedMessage =
+            abi.encode(params.receiver, params.fee, params.tickSpacing, params.tickLower, params.tickUpper);
+
+        // Set the token amounts
+        Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](2);
+        tokenAmounts[0] = Client.EVMTokenAmount({token: params.token0, amount: params.amount0});
+        tokenAmounts[1] = Client.EVMTokenAmount({token: params.token1, amount: params.amount1});
+
+        // Create an EVM2AnyMessage struct in memory
         Client.EVM2AnyMessage memory evm2AnyMessage = Client.EVM2AnyMessage({
-            receiver: abi.encode(receiver), // ABI-encoded receiver address
-            data: abi.encode(message), // ABI-encoded string message
-            tokenAmounts: tokenAmounts, // Tokens amounts
-            extraArgs: Client._argsToBytes(
-                Client.EVMExtraArgsV1({gasLimit: 200_000}) // Additional arguments, setting gas limit and non-strict sequency mode
-            ),
-            feeToken: address(0) // Setting feeToken to zero address, indicating native asset will be used for fees
+            receiver: abi.encode(params.receiver),
+            data: encodedMessage,
+            tokenAmounts: tokenAmounts,
+            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: 200_000})),
+            feeToken: address(0)
         });
 
-        // Initialize a router client instance to interact with cross-chain router
+        // Initialize a router client instance
         IRouterClient router = IRouterClient(this.getRouter());
 
-        // approve the Router to spend tokens on contract's behalf. I will spend the amount of the given token
-        IERC20Minimal(token0).approve(address(router), amount0);
-        IERC20Minimal(token1).approve(address(router), amount1);
+        // Approve the Router to spend tokens on contract's behalf
+        IERC20Minimal(params.token0).approve(address(router), params.amount0);
+        IERC20Minimal(params.token1).approve(address(router), params.amount1);
 
         // Get the fee required to send the message
-        uint256 fees = router.getFee(destinationChainSelector, evm2AnyMessage);
+        uint256 fees = router.getFee(params.destinationChainSelector, evm2AnyMessage);
 
         // Reverts if this Contract doesn't have enough native tokens
         if (address(this).balance < fees) revert InsufficientFeeTokenAmount();
 
         // Send the message through the router and store the returned message ID
-        messageId = router.ccipSend{value: fees}(destinationChainSelector, evm2AnyMessage);
+        messageId = router.ccipSend{value: fees}(params.destinationChainSelector, evm2AnyMessage);
 
         // Emit an event with message details
-        emit MessageSent(messageId, destinationChainSelector, receiver, message, tokenAmount0, tokenAmount1, fees);
+        emit MessageSent(
+            messageId,
+            params.destinationChainSelector,
+            params.receiver,
+            params.message,
+            tokenAmounts[0],
+            tokenAmounts[1],
+            fees
+        );
 
         // Return the message ID
         return messageId;
@@ -361,8 +394,9 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         address sender = abi.decode(any2EvmMessage.sender, (address));
 
         CCIPReceiveParams memory params;
-        (params.recipient, params.fee, params.tickSpacing, params.tickLower, params.tickUpper) =
-            abi.decode(any2EvmMessage.data, (address, uint24, int24, int24, int24));
+        string memory message;
+        (params.recipient, params.fee, params.tickSpacing, params.tickLower, params.tickUpper, message) =
+            abi.decode(any2EvmMessage.data, (address, uint24, int24, int24, int24, string));
 
         Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
 
@@ -371,7 +405,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         params.token1Address = tokenAmounts[1].token;
         params.token1Amount = tokenAmounts[1].amount;
 
-        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
+        //        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(params.token0Address),
@@ -392,6 +426,20 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
         // Emit an event with message details
         emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0], tokenAmounts[1]);
+
+        messageDetail[messageId] = Message({
+            sourceChainSelector: sourceChainSelector,
+            sender: sender,
+            message: message,
+            token0: params.token0Address,
+            amount0: params.token0Amount,
+            token1: params.token1Address,
+            amount1: params.token1Amount,
+            fee: params.fee,
+            tickSpacing: params.tickSpacing,
+            tickLower: params.tickLower,
+            tickUpper: params.tickUpper
+        });
     }
 
     /// @notice Get the total number of received messages.
@@ -400,16 +448,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         return receivedMessages.length;
     }
 
-    /// @notice Fetches details of a received message by message ID.
-    /// @dev Reverts if the message ID does not exist.
-    /// @param messageId The ID of the message whose details are to be fetched.
-    /// @return sourceChainSelector The source chain identifier (aka selector).
-    /// @return sender The address of the sender.
-    /// @return message The received message.
-    /// @return token0 The received token0.
-    /// @return amount0 The received token0 amount.
-    /// @return token1 The received token1.
-    /// @return amount1 The received token1 amount.
     function getReceivedMessageDetails(bytes32 messageId)
         external
         view
@@ -420,7 +458,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             address token0,
             uint256 amount0,
             address token1,
-            uint256 amount1
+            uint256 amount1,
+            uint24 fee,
+            int24 tickSpacing,
+            int24 tickLower,
+            int24 tickUpper
         )
     {
         Message memory detail = messageDetail[messageId];
@@ -432,7 +474,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             detail.token0,
             detail.amount0,
             detail.token1,
-            detail.amount1
+            detail.amount1,
+            detail.fee,
+            detail.tickSpacing,
+            detail.tickLower,
+            detail.tickUpper
         );
     }
 
@@ -606,7 +652,30 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 amount1,
         address recipient
     ) internal {
-        // TODO: Add logic to transfer tokens to the recipient
+        // Get the current tick from the pool
+        (uint160 sqrtPriceX96, int24 tick,,) = poolManager.getSlot0(key.toId());
+
+        // TODO: Fix these
+        // Calculate the tick range (this is an example, adjust as needed)
+        int24 tickSpacing = key.tickSpacing;
+        int24 tickLower = tick - tickSpacing;
+        int24 tickUpper = tick + tickSpacing;
+
+        SendMessageParams memory params = SendMessageParams({
+            destinationChainSelector: uint64(destinationChainId),
+            receiver: recipient,
+            message: "Cross-chain liquidity transfer",
+            token0: Currency.unwrap(key.currency0),
+            amount0: amount0,
+            token1: Currency.unwrap(key.currency1),
+            amount1: amount1,
+            fee: key.fee,
+            tickSpacing: tickSpacing,
+            tickLower: tickLower,
+            tickUpper: tickUpper
+        });
+
+        _sendMessage(params);
     }
 
     function _takeDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
