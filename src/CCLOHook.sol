@@ -314,7 +314,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         address token0,
         uint256 amount0,
         address token1,
-        uint256 amount1
+        uint256 amount1,
+        uint24 fee,
+        int24 tickSpacing,
+        int24 tickLower,
+        int24 tickUpper
     ) external returns (bytes32 messageId) {
         SendMessageParams memory params = SendMessageParams({
             destinationChainSelector: destinationChainSelector,
@@ -323,10 +327,10 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             amount0: amount0,
             token1: token1,
             amount1: amount1,
-            fee: 0, // You might want to set this appropriately
-            tickSpacing: 1, // You might want to set this appropriately
-            tickLower: -1000, // You might want to set this appropriately
-            tickUpper: 1000 // You might want to set this appropriately
+            fee: fee, // You might want to set this appropriately
+            tickSpacing: tickSpacing, // You might want to set this appropriately
+            tickLower: tickLower, // You might want to set this appropriately
+            tickUpper: tickUpper // You might want to set this appropriately
         });
         return _sendMessage(params);
     }

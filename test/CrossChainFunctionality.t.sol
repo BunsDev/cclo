@@ -139,6 +139,9 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         console.log("Token0 balance before:", token0BalanceOfSenderBefore);
         console.log("Token1 balance before:", token1BalanceOfSenderBefore);
 
+        tickLower = TickMath.minUsableTick(key.tickSpacing);
+        tickUpper = TickMath.maxUsableTick(key.tickSpacing);
+
         // Send the cross-chain order
         bytes32 messageId = hookSource.sendMessage(
             destinationChainSelector,
@@ -146,7 +149,11 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
             address(Currency.unwrap(token0)),
             amount0ToSend,
             address(Currency.unwrap(token1)),
-            amount1ToSend
+            amount1ToSend,
+            key.fee,
+            key.tickSpacing,
+            tickLower,
+            tickUpper
         );
 
         uint256 token0BalanceOfSenderAfter = token0.balanceOf(address(hookSource));
@@ -192,6 +199,9 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         console.log("Token0 balance before:", token0BalanceOfSenderBefore);
         console.log("Token1 balance before:", token1BalanceOfSenderBefore);
 
+        tickLower = TickMath.minUsableTick(key.tickSpacing);
+        tickUpper = TickMath.maxUsableTick(key.tickSpacing);
+
         // Send the cross-chain order
         bytes32 messageId = hookSource.sendMessage(
             destinationChainSelector,
@@ -199,7 +209,11 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
             address(Currency.unwrap(token0)),
             amount0ToSend,
             address(Currency.unwrap(token1)),
-            amount1ToSend
+            amount1ToSend,
+            key.fee,
+            key.tickSpacing,
+            tickLower,
+            tickUpper
         );
 
         uint256 token0BalanceOfSenderAfter = token0.balanceOf(address(hookSource));
