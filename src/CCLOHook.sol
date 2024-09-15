@@ -113,6 +113,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     struct Strategy {
         uint256[] chainIds;
         uint256[] percentages;
+        uint64[] chainSelectors;
     }
 
     // Struct to hold details of a message.
@@ -289,7 +290,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
                     (uint256 amount0, uint256 amount1) =
                         _calculateTokenAmounts(params, liquidityAmounts[i], sqrtPriceX96);
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
-                    _transferCrossChain(strategy.chainIds[i], key, amount0, amount1, sender);
+                    _transferCrossChain(strategy.chainSelectors[i], key, amount0, amount1, sender);
                 }
             }
 
@@ -608,7 +609,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     function _transferCrossChain(
-        uint256 destinationChainId,
+        uint64 destinationChainSelector,
         PoolKey memory key,
         uint256 amount0,
         uint256 amount1,
@@ -624,7 +625,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         int24 tickUpper = tick + tickSpacing;
 
         SendMessageParams memory params = SendMessageParams({
-            destinationChainSelector: uint64(destinationChainId),
+            destinationChainSelector: uint64(destinationChainSelector),
             receiver: recipient,
             token0: Currency.unwrap(key.currency0),
             amount0: amount0,
@@ -656,7 +657,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         PoolId poolId,
         uint256 strategyId,
         uint256[] memory chainIds,
-        uint256[] memory liquidityPercentages
+        uint256[] memory liquidityPercentages,
+        uint64[] memory chainSelectors
     ) public {
         // Check that the strategy ID is not already in use for this pool
         require(strategies[poolId][strategyId].chainIds.length == 0, "Strategy ID already in use for this pool");
@@ -675,7 +677,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         require(totalLiquidityPercentage == 100, "Liquidity percentages must add up to 100");
 
         // Add the new strategy to the strategies mapping
-        strategies[poolId][strategyId] = Strategy({chainIds: chainIds, percentages: liquidityPercentages});
+        strategies[poolId][strategyId] = Strategy({chainIds: chainIds, percentages: liquidityPercentages, chainSelectors: chainSelectors});
 
         // Emit an event to notify that a new strategy has been added
         emit StrategyAdded(poolId, strategyId, chainIds, liquidityPercentages);
