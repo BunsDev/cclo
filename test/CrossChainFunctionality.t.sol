@@ -164,6 +164,7 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         // Send the cross-chain order
         bytes32 messageId = hookSource.sendMessage(
             destinationChainSelector,
+            address(this),
             address(hookDestination),
             address(Currency.unwrap(token0)),
             amount0ToSend,
@@ -226,6 +227,7 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         // Send the cross-chain order
         bytes32 messageId = hookSource.sendMessage(
             destinationChainSelector,
+            address(this),
             address(hookDestination),
             address(Currency.unwrap(token0)),
             amount0ToSend,
