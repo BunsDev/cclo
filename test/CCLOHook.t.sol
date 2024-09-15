@@ -166,15 +166,9 @@ contract CCLOHookTest is Test, Fixtures {
         token0.transfer(address(hookAddress), 1000e18);
         token1.transfer(address(hookAddress), 1000e18);
 
-         // Approve our hook address to spend these tokens as well
-        MockERC20(Currency.unwrap(token0)).approve(
-            address(hook),
-            type(uint256).max
-        );
-        MockERC20(Currency.unwrap(token1)).approve(
-            address(hook),
-            type(uint256).max
-        );
+        // Approve our hook address to spend these tokens as well
+        MockERC20(Currency.unwrap(token0)).approve(address(hook), type(uint256).max);
+        MockERC20(Currency.unwrap(token1)).approve(address(hook), type(uint256).max);
 
         string memory messageToSend = "Hello, World!";
         uint256 amount0ToSend = 100;
@@ -206,28 +200,30 @@ contract CCLOHookTest is Test, Fixtures {
         console.log("Message ID:", uint256(messageId));
 
         // Assertions
-        assertEq(token0BalanceOfSenderAfter, token0BalanceOfSenderBefore - amount0ToSend, "Token0 balance not decreased correctly");
-        assertEq(token1BalanceOfSenderAfter, token1BalanceOfSenderBefore - amount1ToSend, "Token1 balance not decreased correctly");
+        assertEq(
+            token0BalanceOfSenderAfter,
+            token0BalanceOfSenderBefore - amount0ToSend,
+            "Token0 balance not decreased correctly"
+        );
+        assertEq(
+            token1BalanceOfSenderAfter,
+            token1BalanceOfSenderBefore - amount1ToSend,
+            "Token1 balance not decreased correctly"
+        );
         assertTrue(messageId != bytes32(0), "Message ID should not be zero");
     }
 
     function test_TokensLeaveSenderAndReceivedByReceiverCCIP() external {
-                deal(address(hookAddress), 1 ether);
+        deal(address(hookAddress), 1 ether);
         ccipBnMToken.drip(address(hookAddress));
 
         // Transfer tokens to the hook address
         token0.transfer(address(hookAddress), 1000e18);
         token1.transfer(address(hookAddress), 1000e18);
 
-         // Approve our hook address to spend these tokens as well
-        MockERC20(Currency.unwrap(token0)).approve(
-            address(hook),
-            type(uint256).max
-        );
-        MockERC20(Currency.unwrap(token1)).approve(
-            address(hook),
-            type(uint256).max
-        );
+        // Approve our hook address to spend these tokens as well
+        MockERC20(Currency.unwrap(token0)).approve(address(hook), type(uint256).max);
+        MockERC20(Currency.unwrap(token1)).approve(address(hook), type(uint256).max);
 
         string memory messageToSend = "Hello, World!";
         uint256 amount0ToSend = 100;
@@ -260,12 +256,28 @@ contract CCLOHookTest is Test, Fixtures {
         console.logBytes32((messageId));
 
         // Assertions
-        assertEq(token0BalanceOfSenderAfter, token0BalanceOfSenderBefore - amount0ToSend, "Token0 balance not decreased correctly");
-        assertEq(token1BalanceOfSenderAfter, token1BalanceOfSenderBefore - amount1ToSend, "Token1 balance not decreased correctly");
+        assertEq(
+            token0BalanceOfSenderAfter,
+            token0BalanceOfSenderBefore - amount0ToSend,
+            "Token0 balance not decreased correctly"
+        );
+        assertEq(
+            token1BalanceOfSenderAfter,
+            token1BalanceOfSenderBefore - amount1ToSend,
+            "Token1 balance not decreased correctly"
+        );
         assertTrue(messageId != bytes32(0), "Message ID should not be zero");
 
         // Check if the message was actually sent through the CCIP router
-        (uint64 sourceChainSelector, address sender, string memory message, address token0MsgAddr, uint256 amount0, address token1MsgAddr, uint256 amount1) = hookReceiver.getReceivedMessageDetails(messageId);
+        (
+            uint64 sourceChainSelector,
+            address sender,
+            string memory message,
+            address token0MsgAddr,
+            uint256 amount0,
+            address token1MsgAddr,
+            uint256 amount1
+        ) = hookReceiver.getReceivedMessageDetails(messageId);
         assertEq(sourceChainSelector, destinationChainSelector, "Source chain selector does not match");
         assertEq(sender, address(hook), "Sender does not match");
         assertEq(message, messageToSend, "Message does not match");

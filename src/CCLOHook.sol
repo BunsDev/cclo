@@ -138,7 +138,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 token0Amount;
         address token1Address;
         uint256 token1Amount;
-
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -422,9 +421,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         _refundRemainingTokens(params);
 
         // Emit an event with message details
-        emit MessageReceived(
-            messageId, sourceChainSelector, sender, message, tokenAmounts[0], tokenAmounts[1]
-        );
+        emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0], tokenAmounts[1]);
     }
 
     /// @notice Get the total number of received messages.
@@ -446,11 +443,27 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     function getReceivedMessageDetails(bytes32 messageId)
         external
         view
-        returns (uint64 sourceChainSelector, address sender, string memory message, address token0, uint256 amount0, address token1, uint256 amount1)
+        returns (
+            uint64 sourceChainSelector,
+            address sender,
+            string memory message,
+            address token0,
+            uint256 amount0,
+            address token1,
+            uint256 amount1
+        )
     {
         Message memory detail = messageDetail[messageId];
         if (detail.sender == address(0)) revert MessageIdNotExist(messageId);
-        return (detail.sourceChainSelector, detail.sender, detail.message, detail.token0, detail.amount0, detail.token1, detail.amount1);
+        return (
+            detail.sourceChainSelector,
+            detail.sender,
+            detail.message,
+            detail.token0,
+            detail.amount0,
+            detail.token1,
+            detail.amount1
+        );
     }
 
     /// @notice Fetches details of a received message by its position in the received messages list.
@@ -483,7 +496,16 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         }
         messageId = receivedMessages[index];
         Message memory detail = messageDetail[messageId];
-        return (messageId, detail.sourceChainSelector, detail.sender, detail.message, detail.token0, detail.amount0, detail.token1, detail.amount1);
+        return (
+            messageId,
+            detail.sourceChainSelector,
+            detail.sender,
+            detail.message,
+            detail.token0,
+            detail.amount0,
+            detail.token1,
+            detail.amount1
+        );
     }
 
     /// @notice Fetches the details of the last received message.
@@ -519,7 +541,16 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         // Fetch the details of the last received message
         Message memory detail = messageDetail[messageId];
 
-        return (messageId, detail.sourceChainSelector, detail.sender, detail.message, detail.token0, detail.amount0, detail.token1, detail.amount1);
+        return (
+            messageId,
+            detail.sourceChainSelector,
+            detail.sender,
+            detail.message,
+            detail.token0,
+            detail.amount0,
+            detail.token1,
+            detail.amount1
+        );
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
