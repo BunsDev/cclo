@@ -81,12 +81,14 @@ contract CCLOHookTest is Test, Fixtures {
         chainIds[0] = originalHookChainId;
         uint256[] memory percentages = new uint256[](1);
         percentages[0] = 100;
+        uint64[] memory selectors = new uint64[](1);
+        selectors[0] = 1;
 
         // Create the pool
         key = PoolKey(currency0, currency1, 3000, 60, IHooks(hook));
         poolId = key.toId();
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
-        hook.addStrategy(poolId, 1, chainIds, percentages);
+        hook.addStrategy(poolId, 1, chainIds, percentages, selectors);
     }
 
     function test_cannotAddLiquidity() public {
