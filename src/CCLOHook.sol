@@ -231,35 +231,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     // Add Liquidity
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
-    //    // Function to add liquidity across multiple chains using a predefined strategy
-    //    function addLiquidityCrossChain(
-    //        PoolKey calldata key,
-    //        uint256 strategyId,
-    //        uint256 amount0Desired,
-    //        uint256 amount1Desired,
-    //        uint256 amount0Min,
-    //        uint256 amount1Min,
-    //        address to
-    //    ) external returns (uint128 liquidity) {
-    //        // Get the selected strategy
-    //        Strategy storage strategy = strategies[strategyId];
-    //
-    //        // Calculate the liquidity to be added on each chain
-    //        uint256[] memory liquidityAmounts = _calculateLiquidityAmounts(strategy, amount0Desired, amount1Desired);
-    //
-    //        // Add liquidity to the user if the hook's chain ID exists in the strategy
-    //        for (uint256 i = 0; i < strategy.chainIds.length; i++) {
-    //            if (strategy.chainIds[i] == hookChainId) {
-    //                // Add liquidity to the user
-    //                _addLiquidityToUser(key, liquidityAmounts[i], amount0Desired, amount1Desired, to);
-    //            } else {
-    //                params.liquidityDelta -= int256(uint256(liquidityToBridge));
-    //                // Create a cross-chain order for the remaining liquidity
-    //                _createCrossChainOrder(key, liquidityAmounts[i], amount0Desired, amount1Desired);
-    //            }
-    //        }
-    //    }
-
     function addLiquidityWithCrossChainStrategy(
         PoolKey memory key,
         IPoolManager.ModifyLiquidityParams memory params,
@@ -384,7 +355,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     /// handle a received message
-
     function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
         bytes32 messageId = any2EvmMessage.messageId;
         uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector;
@@ -639,78 +609,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         // TODO: Add logic to transfer tokens to the recipient
     }
 
-    //    // Function to add liquidity to the user
-    //    function _addLiquidityToUser(
-    //        PoolKey calldata key,
-    //        uint256 liquidityAmount,
-    //        uint256 amount0Desired,
-    //        uint256 amount1Desired,
-    //        address to
-    //    ) internal {
-    //        // Add liquidity to the user
-    //        uint128 liquidity = LiquidityAmounts.getLiquidityForAmounts(
-    //            TickMath.getSqrtPriceAtTick(key.tickLower),
-    //            TickMath.getSqrtPriceAtTick(key.tickUpper),
-    //            amount0Desired,
-    //            amount1Desired
-    //        );
-    //
-    //        // Transfer the LP token to the user
-    ////        UniswapV4ERC20(poolInfo[key.toId()].liquidityToken).mint(to, liquidity);
-    //    }
-
-    //    // Function to create a cross-chain order for the remaining liquidity
-    //    function _createCrossChainOrder(
-    //        PoolKey calldata key,
-    //        uint256 liquidityAmount,
-    //        uint256 amount0Desired,
-    //        uint256 amount1Desired
-    //    ) internal {
-    //        // Create a cross-chain order
-    //        CrossChainOrder storage order = ordersToBeFilled[key.toId()];
-    //        order.poolId = key.toId();
-    //        order.token0Amount = amount0Desired;
-    //        order.token1Amount = amount1Desired;
-    //        order.lowerTick = key.tickLower;
-    //        order.upperTick = key.tickUpper;
-    //    }
-
-    //    // Function to fulfill a cross-chain order
-    //    function fulfillCrossChainOrder(PoolId poolId) external {
-    //        // Get the cross-chain order
-    //        CrossChainOrder storage order = ordersToBeFilled[poolId];
-    //
-    //        // Fulfill the cross-chain order
-    //        _fulfillCrossChainOrder(order);
-    //
-    //        // Emit an event to indicate the fulfillment of the cross-chain order
-    //        emit CrossChainOrderFulfilled(poolId);
-    //    }
-
-    //    // Function to fulfill a cross-chain order
-    //    function _fulfillCrossChainOrder(CrossChainOrder storage order) internal {
-    //        // Add liquidity on the destination chain
-    //        _addLiquidityOnDestinationChain(order.poolId, order.token0Amount, order.token1Amount);
-    //
-    //        // Transfer the LP token to the user
-    //        UniswapV4ERC20(poolInfo[order.poolId].liquidityToken).mint(msg.sender, order.token0Amount);
-    //    }
-
-    //    // Function to add liquidity on the destination chain
-    //    function _addLiquidityOnDestinationChain(
-    //        PoolId poolId,
-    //        uint256 amount0Desired,
-    //        uint256 amount1Desired
-    //    ) internal {
-    //        // Add liquidity on the destination chain
-    //        LiquidityAmounts.getLiquidityForAmounts(
-    //            TickMath.getSqrtPriceAtTick(poolInfo[poolId].tickLower),
-    //            TickMath.getSqrtPriceAtTick(poolInfo[poolId].tickUpper),
-    //            amount0Desired,
-    //            amount1Desired
-    //        );
-    //    }
-
     function _takeDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
         poolManager.take(key.currency0, sender, uint256(uint128(-delta.amount0())));
         poolManager.take(key.currency1, sender, uint256(uint128(-delta.amount1())));
@@ -722,30 +620,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         //        _settleDelta(sender, key.currency0, uint128(delta.amount0()));
         //        _settleDelta(sender, key.currency1, uint128(delta.amount1()));
     }
-
-    //    /// @notice Calls settle or take depending on the signs of `delta0` and `delta1`
-    //    function _settleOrTake(address sender, PoolKey memory sender, BalanceDelta delta) internal {
-    //        int256 delta0 = int256(delta.amount0());
-    //        int256 delta1 = int256(delta.amount1());
-    //        if (delta0 < 0) key.currency0.settle(poolManager, sender, uint256(-delta0), useClaims);
-    //        if (delta1 < 0) key.currency1.settle(poolManager, sender, uint256(-delta1), useClaims);
-    //        if (delta0 > 0) key.currency0.take(poolManager, sender, uint256(delta0), useClaims);
-    //        if (delta1 > 0) key.currency1.take(poolManager, sender, uint256(delta1), useClaims);
-    //    }
-
-    //    function _settleDelta(address sender, Currency currency, uint128 amount) internal {
-    //
-    //        if (currency.isNative()) {
-    //            poolManager.settle{value: amount}(currency);
-    //        } else {
-    //            if (sender == address(this)) {
-    //                currency.transfer(address(poolManager), amount);
-    //            } else {
-    //                IERC20(Currency.unwrap(currency)).transferFrom(sender, address(poolManager), amount);
-    //            }
-    //            poolManager.settle(currency);
-    //        }
-    //    }
 
     /// Function to add a new strategy
     function addStrategy(
