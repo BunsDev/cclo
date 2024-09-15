@@ -259,6 +259,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     /// @notice Callback function invoked during the unlock of liquidity, executing any required state changes.
     /// @param rawData Encoded data containing details for the unlock operation.
     /// @return Encoded result of the liquidity modification.
+
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         PoolKey memory key = data.key;
@@ -276,7 +277,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
         if (data.params.liquidityDelta < 0) {
             (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
-            _settleDeltas(sender, key, delta);
+            _takeDeltas(sender, key, delta);
         } else {
             // Calculate the liquidity to be added on each chain
             //            console.log("params.liquidityDelta", params.liquidityDelta);
@@ -624,6 +625,11 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         int24 tickLower = tick - tickSpacing;
         int24 tickUpper = tick + tickSpacing;
 
+        //        token.approve(address(gateway), amount);
+        //        token.transferFrom(sender, address(this), amount);
+        IERC20Minimal(Currency.unwrap(key.currency0)).transferFrom(recipient, address(this), amount0);
+        IERC20Minimal(Currency.unwrap(key.currency1)).transferFrom(recipient, address(this), amount1);
+
         SendMessageParams memory params = SendMessageParams({
             destinationChainSelector: uint64(destinationChainSelector),
             receiver: recipient,
@@ -646,10 +652,12 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     function _settleDeltas(address sender, PoolKey memory key, BalanceDelta delta) internal {
-        key.currency0.settle(poolManager, sender, uint256(int256(-delta.amount0())), false);
-        key.currency1.settle(poolManager, sender, uint256(int256(-delta.amount1())), false);
-        //        _settleDelta(sender, key.currency0, uint128(delta.amount0()));
-        //        _settleDelta(sender, key.currency1, uint128(delta.amount1()));
+        _settleDelta(sender, key.currency0, uint128(-delta.amount0()));
+        _settleDelta(sender, key.currency1, uint128(-delta.amount1()));
+    }
+
+    function _settleDelta(address sender, Currency currency, uint128 amount) internal {
+        currency.settle(poolManager, sender, amount, false);
     }
 
     /// Function to add a new strategy
@@ -677,7 +685,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         require(totalLiquidityPercentage == 100, "Liquidity percentages must add up to 100");
 
         // Add the new strategy to the strategies mapping
-        strategies[poolId][strategyId] = Strategy({chainIds: chainIds, percentages: liquidityPercentages, chainSelectors: chainSelectors});
+        strategies[poolId][strategyId] =
+            Strategy({chainIds: chainIds, percentages: liquidityPercentages, chainSelectors: chainSelectors});
 
         // Emit an event to notify that a new strategy has been added
         emit StrategyAdded(poolId, strategyId, chainIds, liquidityPercentages);

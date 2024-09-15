@@ -128,13 +128,13 @@ contract CCLOHookTest is Test, Fixtures {
         uint256 balance1Before = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
         hook.addLiquidityWithCrossChainStrategy(
-            key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 1000e18, bytes32(0)), 1
+            key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 10000, bytes32(0)), 1
         );
 
         uint256 balance0After = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
         uint256 balance1After = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
-        assertEq(balance0Before - balance0After, 999999999999999999946);
-        assertEq(balance1Before - balance1After, 999999999999999999946);
+        assertEq(balance0Before - balance0After, 10000);
+        assertEq(balance1Before - balance1After, 10000);
     }
 }
