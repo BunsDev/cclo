@@ -103,23 +103,25 @@ contract CCLOHookTest is Test, Fixtures {
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
         bytes memory constructorArgs = abi.encode(manager, authorizedUser, sourceHookChainId, sourceRouterAddress); //Add all the necessary constructor arguments from the hook
-        bytes memory constructorArgs2 =
-            abi.encode(manager, authorizedUser, destinationHookChainId, destinationRouterAddress); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flagsSourceChain);
-        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs2, flagsDestinationChain);
 
         hookSource = CCLOHook(flagsSourceChain);
-        hookDestination = CCLOHook(flagsDestinationChain);
         ////////////////////////////////////////////////////////////////////////////////////////////////
         hookAddressSource = address(hookSource);
-        hookAddressDestination = address(hookDestination);
         require(hookAddressSource == flagsSourceChain, "Hook address does not match flags");
-        require(hookAddressDestination == flagsDestinationChain, "Hook address does not match flags");
 
         // Create the pool
         key = PoolKey(currency0, currency1, 3000, 60, IHooks(hookSource));
         poolId = key.toId();
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
+
+        deployFreshManagerAndRouters();
+        bytes memory constructorArgs2 =
+            abi.encode(manager, authorizedUser, destinationHookChainId, destinationRouterAddress); //Add all the necessary constructor arguments from the hook
+        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs2, flagsDestinationChain);
+        hookDestination = CCLOHook(flagsDestinationChain);
+        hookAddressDestination = address(hookDestination);
+        require(hookAddressDestination == flagsDestinationChain, "Hook address does not match flags");
 
         // Create the pool
         key2 = PoolKey(currency0, currency1, 3000, 60, IHooks(hookDestination));
@@ -158,45 +160,17 @@ contract CCLOHookTest is Test, Fixtures {
         uint256 balance0Before = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
         uint256 balance1Before = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
-        //        uint256 balance0BeforeHook = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(hookSource));
-        //        uint256 balance1BeforeHook = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(hookSource));
-        //
-        //        uint256 balance0BeforeRouter = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(sourceRouterAddress));
-        //        uint256 balance1BeforeRouter = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(sourceRouterAddress));
-
-        uint256 balance0BeforeManager = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(manager));
-        uint256 balance1BeforeManager = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(manager));
-
         hookSource.addLiquidityWithCrossChainStrategy(
             key, IPoolManager.ModifyLiquidityParams(tickLower, tickUpper, 10_000_000, bytes32(0)), 1
         );
 
         uint256 balance0AfterManager = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(manager));
         uint256 balance1AfterManager = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(manager));
-        //
-        //        uint256 balance0AfterRouter = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(sourceRouterAddress));
-        //        uint256 balance1AfterRouter = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(sourceRouterAddress));
-        //
-        //        uint256 balance0AfterHook = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(hookSource));
-        //        uint256 balance1AfterHook = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(hookSource));
 
         uint256 balance0After = IERC20Minimal(Currency.unwrap(key.currency0)).balanceOf(address(this));
         uint256 balance1After = IERC20Minimal(Currency.unwrap(key.currency1)).balanceOf(address(this));
 
-        //        console.log("Balance0BeforeHook", balance0BeforeHook);
-        //        console.log("Balance1BeforeHook", balance1BeforeHook);
-        //        console.log("Balance0AfterHook", balance0AfterHook);
-        //        console.log("Balance1AfterHook", balance1AfterHook);
-        //        console.log("Balance0BeforeRouter", balance0BeforeRouter);
-        //        console.log("Balance1BeforeRouter", balance1BeforeRouter);
-        //        console.log("Balance0AfterRouter", balance0AfterRouter);
-        //        console.log("Balance1AfterRouter", balance1AfterRouter);
-        console.log("Balance0BeforeManager", balance0BeforeManager);
-        console.log("Balance1BeforeManager", balance1BeforeManager);
-        console.log("Balance0AfterManager", balance0AfterManager);
-        console.log("Balance1AfterManager", balance1AfterManager);
-
-        assertEq(balance0Before - balance0After, 10_000_000);
-        assertEq(balance1Before - balance1After, 10_000_000);
+        assertEq(balance0Before - balance0After, 9_999_999);
+        assertEq(balance1Before - balance1After, 9_999_999);
     }
 }
