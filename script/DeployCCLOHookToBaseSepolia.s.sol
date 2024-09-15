@@ -43,7 +43,7 @@ contract CCLOHookScript is Script {
     function setUp() public {}
 
     function run() public {
-        vm.broadcast();
+//        vm.broadcast();
         IPoolManager manager = IPoolManager(BASE_SEPOLIA_POOL_MANAGER); // taken from Haardik's deployment
         address authorizedUser = address(0xFEED);
 
@@ -62,5 +62,7 @@ contract CCLOHookScript is Script {
         vm.broadcast();
         CCLOHook hook = new CCLOHook{salt: salt}(manager, authorizedUser, BASE_SEPOLIA_CHAIN_ID, BASE_SEPOLIA_CCIP_ROUTER);
         require(address(hook) == hookAddress, "CCLOHookScript: Base Sepolia hook address mismatch");
+
+//        hook.addStrategy(poolId, 1, chainIds, percentages, selectors, hooks);
     }
 }
