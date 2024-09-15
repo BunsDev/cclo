@@ -206,25 +206,9 @@ contract CCLOHookTest is Test, Fixtures {
         console.log("Message ID:", uint256(messageId));
 
         // Assertions
-<<<<<<< Updated upstream
-        assertEq(
-            balanceOfSenderAfter, balanceOfSenderBefore - amountToSend, "CCIP token balance not decreased correctly"
-        );
-        assertTrue(messageId != bytes32(0), "Message ID should not be zero");
-
-        // Check if the message was actually sent through the CCIP router
-        // Doesn't work because we do not have a message to receive! We've only sent the message "out".
-        // (uint64 sourceChainSelector, address sender, string memory message, address token, uint256 amount) = hook.getReceivedMessageDetails(messageId);
-        // assertEq(sourceChainSelector, destinationChainSelector, "Source chain selector does not match");
-        // assertEq(sender, address(hook), "Sender does not match");
-        // assertEq(message, messageToSend, "Message does not match");
-        // assertEq(token, address(ccipBnMToken), "Token does not match");
-        // assertEq(amount, amountToSend, "Amount does not match");
-=======
         assertEq(token0BalanceOfSenderAfter, token0BalanceOfSenderBefore - amount0ToSend, "Token0 balance not decreased correctly");
         assertEq(token1BalanceOfSenderAfter, token1BalanceOfSenderBefore - amount1ToSend, "Token1 balance not decreased correctly");
         assertTrue(messageId != bytes32(0), "Message ID should not be zero");
->>>>>>> Stashed changes
     }
     
     function test_TokensLeaveSenderAndReceivedByReceiverCCIP() external {

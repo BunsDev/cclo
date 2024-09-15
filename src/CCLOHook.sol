@@ -138,6 +138,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 token0Amount;
         address token1Address;
         uint256 token1Amount;
+
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
@@ -343,17 +344,12 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         uint256 amount1
     ) external returns (bytes32 messageId) {
         // set the token amounts
-<<<<<<< Updated upstream
-        Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
-        Client.EVMTokenAmount memory tokenAmount = Client.EVMTokenAmount({token: token, amount: amount});
-        tokenAmounts[0] = tokenAmount;
-=======
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](2);
         Client.EVMTokenAmount memory tokenAmount0 = Client.EVMTokenAmount({token: token0, amount: amount0});
         Client.EVMTokenAmount memory tokenAmount1 = Client.EVMTokenAmount({token: token1, amount: amount1});
         tokenAmounts[0] = tokenAmount0;
         tokenAmounts[1] = tokenAmount1;
->>>>>>> Stashed changes
+
         // Create an EVM2AnyMessage struct in memory with necessary information for sending a cross-chain message
         Client.EVM2AnyMessage memory evm2AnyMessage = Client.EVM2AnyMessage({
             receiver: abi.encode(receiver), // ABI-encoded receiver address
@@ -389,21 +385,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
     }
 
     /// handle a received message
-<<<<<<< Updated upstream
-    //    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
-    //        bytes32 messageId = any2EvmMessage.messageId; // fetch the messageId
-    //        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector; // fetch the source chain identifier (aka selector)
-    //        address sender = abi.decode(any2EvmMessage.sender, (address)); // abi-decoding of the sender address
-    //        Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
-    //        address token = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-    //        uint256 amount = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-    //        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
-    //        receivedMessages.push(messageId);
-    //        Message memory detail = Message(sourceChainSelector, sender, message, token, amount);
-    //        messageDetail[messageId] = detail;
-    //
-    //        emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0]);
-    //    }
 
     function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
         bytes32 messageId = any2EvmMessage.messageId;
@@ -420,6 +401,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         params.token0Amount = tokenAmounts[0].amount;
         params.token1Address = tokenAmounts[1].token;
         params.token1Amount = tokenAmounts[1].amount;
+
+        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(params.token0Address),
@@ -440,25 +423,8 @@ contract CCLOHook is CCIPReceiver, BaseHook {
 
         // Emit an event with message details
         emit MessageReceived(
-            messageId, sourceChainSelector, sender, "", Client.EVMTokenAmount({token: address(0), amount: 0})
+            messageId, sourceChainSelector, sender, message, tokenAmounts[0], tokenAmounts[1]
         );
-=======
-    function _ccipReceive(Client.Any2EVMMessage memory any2EvmMessage) internal override {
-        bytes32 messageId = any2EvmMessage.messageId; // fetch the messageId
-        uint64 sourceChainSelector = any2EvmMessage.sourceChainSelector; // fetch the source chain identifier (aka selector)
-        address sender = abi.decode(any2EvmMessage.sender, (address)); // abi-decoding of the sender address
-        Client.EVMTokenAmount[] memory tokenAmounts = any2EvmMessage.destTokenAmounts;
-        address token0 = tokenAmounts[0].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        uint256 amount0 = tokenAmounts[0].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        address token1 = tokenAmounts[1].token; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        uint256 amount1 = tokenAmounts[1].amount; // we expect one token to be transfered at once but of course, you can transfer several tokens.
-        string memory message = abi.decode(any2EvmMessage.data, (string)); // abi-decoding of the sent string message
-        receivedMessages.push(messageId);
-        Message memory detail = Message(sourceChainSelector, sender, message, token0, amount0, token1, amount1);
-        messageDetail[messageId] = detail;
-
-        emit MessageReceived(messageId, sourceChainSelector, sender, message, tokenAmounts[0], tokenAmounts[1]);
->>>>>>> Stashed changes
     }
 
     /// @notice Get the total number of received messages.
