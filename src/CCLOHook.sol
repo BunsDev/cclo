@@ -270,8 +270,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         BalanceDelta delta;
 
         if (isCrossChainIncoming) {
-            (delta,) = poolManager.modifyLiquidity(key, params, ZERO_BYTES);
-            _settleDeltas(sender, key, delta);
             return abi.encode(delta);
         }
 
@@ -396,6 +394,9 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         params.token0Amount = tokenAmounts[0].amount;
         params.token1Address = tokenAmounts[1].token;
         params.token1Amount = tokenAmounts[1].amount;
+
+        IERC20Minimal(params.token0Address).approve(address(poolManager), type(uint256).max);
+        IERC20Minimal(params.token1Address).approve(address(poolManager), type(uint256).max);
 
         PoolKey memory key = PoolKey({
             currency0: Currency.wrap(params.token0Address),

@@ -33,6 +33,9 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
     CCIPLocalSimulator public ccipLocalSimulator;
     BurnMintERC677Helper public ccipBnMToken;
 
+    address public sourceRouterAddress;
+    address public destinationRouterAddress;
+
     uint64 public destinationChainSelector;
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -83,18 +86,27 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         // CCIP Setup
         ////////////////////////////////////////////////////////////////////////////////////////////////
         ccipLocalSimulator = new CCIPLocalSimulator();
-        (uint64 chainSelector, IRouterClient sourceRouter,,,, BurnMintERC677Helper ccipBnM,) =
-            ccipLocalSimulator.configuration();
+        (
+            uint64 chainSelector,
+            IRouterClient sourceRouter,
+            IRouterClient destinationRouter,
+            ,
+            ,
+            BurnMintERC677Helper ccipBnM,
+        ) = ccipLocalSimulator.configuration();
         destinationChainSelector = chainSelector;
         ccipBnMToken = ccipBnM;
 
+        sourceRouterAddress = address(sourceRouter);
+        destinationRouterAddress = address(destinationRouter);
+
         ////////////////////////////////////////////////////////////////////////////////////////////////
 
-        bytes memory constructorArgs = abi.encode(manager, authorizedUser, sourceHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
+        bytes memory constructorArgs = abi.encode(manager, authorizedUser, sourceHookChainId, sourceRouterAddress); //Add all the necessary constructor arguments from the hook
         bytes memory constructorArgs2 =
-            abi.encode(manager, authorizedUser, destinationHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
+            abi.encode(manager, authorizedUser, destinationHookChainId, destinationRouterAddress); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flagsSourceChain);
-        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flagsDestinationChain);
+        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs2, flagsDestinationChain);
 
         hookSource = CCLOHook(flagsSourceChain);
         hookDestination = CCLOHook(flagsDestinationChain);
@@ -131,6 +143,11 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         // Approve our hook address to spend these tokens as well
         MockERC20(Currency.unwrap(token0)).approve(address(hookSource), type(uint256).max);
         MockERC20(Currency.unwrap(token1)).approve(address(hookSource), type(uint256).max);
+
+        vm.prank(destinationRouterAddress);
+        MockERC20(Currency.unwrap(token0)).approve(address(hookDestination), type(uint256).max);
+        vm.prank(destinationRouterAddress);
+        MockERC20(Currency.unwrap(token1)).approve(address(hookDestination), type(uint256).max);
 
         uint256 amount0ToSend = 100;
         uint256 amount1ToSend = 500;
