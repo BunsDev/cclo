@@ -16,6 +16,7 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {CurrencyLibrary, Currency} from "v4-core/src/types/Currency.sol";
 import {CCLOHook} from "../src/CCLOHook.sol";
 import {HookMiner} from "../test/utils/HookMiner.sol";
+import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 
 /// @notice Forge script for deploying v4 & hooks to **anvil**
 /// @dev This script only works on an anvil RPC because v4 exceeds bytecode limits
@@ -76,6 +77,12 @@ contract CCLOHookScript is Script {
         Currency currency1 = Currency.wrap(address(token1));
 
         PoolKey memory key = PoolKey(currency0, currency1, 3000, 60, IHooks(CCLO_HOOK_ADDRESS_BASE_SEPOLIA));
+        PoolId id = PoolIdLibrary.toId(key);
+        bytes32 idBytes = PoolId.unwrap(id);
+
+        console.log("Pool ID Below");
+        console.logBytes32(bytes32(idBytes));
+
         vm.broadcast();
         manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
     }
