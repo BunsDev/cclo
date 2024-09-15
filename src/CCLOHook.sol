@@ -350,7 +350,7 @@ contract CCLOHook is CCIPReceiver, BaseHook {
             receiver: abi.encode(params.receiver),
             data: encodedMessage,
             tokenAmounts: tokenAmounts,
-            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: 200_000})),
+            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: 500_000})),
             feeToken: address(0)
         });
 

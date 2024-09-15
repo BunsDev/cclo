@@ -94,7 +94,7 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
         bytes memory constructorArgs2 =
             abi.encode(manager, authorizedUser, destinationHookChainId, address(sourceRouter)); //Add all the necessary constructor arguments from the hook
         deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flagsSourceChain);
-        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs2, flagsDestinationChain);
+        deployCodeTo("CCLOHook.sol:CCLOHook", constructorArgs, flagsDestinationChain);
 
         hookSource = CCLOHook(flagsSourceChain);
         hookDestination = CCLOHook(flagsDestinationChain);
@@ -120,7 +120,9 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
     ////////////////////////////////////////////////////////////////////////////////////////////////
     function test_TokensLeaveSourceChain() external {
         deal(address(hookAddressSource), 1 ether);
-        ccipBnMToken.drip(address(hookAddressSource));
+        deal(address(hookDestination), 1 ether);
+        ccipBnMToken.drip(address(hookSource));
+        ccipBnMToken.drip(address(hookDestination));
 
         // Transfer tokens to the hook address
         token0.transfer(address(hookAddressSource), 1000e18);
@@ -180,7 +182,9 @@ contract CrossChainFunctionalityTest is Test, Fixtures {
 
     function test_TokensLeaveSenderAndReceivedByReceiverCCIP() external {
         deal(address(hookSource), 1 ether);
+        deal(address(hookDestination), 1 ether);
         ccipBnMToken.drip(address(hookSource));
+        ccipBnMToken.drip(address(hookDestination));
 
         // Transfer tokens to the hook address
         token0.transfer(address(hookSource), 1000e18);
