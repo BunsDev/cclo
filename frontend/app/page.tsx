@@ -56,8 +56,11 @@ export default function Home() {
   async function submit(e: React.FormEvent<HTMLFormElement>) { 
     e.preventDefault() 
     const formData = new FormData(e.target as HTMLFormElement) 
-    const to = formData.get('address') as `0x${string}` 
-    const value = formData.get('value') as string 
+    // const to = formData.get('address') as `0x${string}` 
+    // const value = formData.get('value') as string 
+for (var [key, value] of formData.entries()) { 
+   console.log(key, value);
+  }
     writeContract({
       address: chainIdToHookContractAddress[chainId] ?? chainIdToHookContractAddress[84532],
       abi: ccloHookAbi,
@@ -75,13 +78,13 @@ export default function Home() {
         <CardTitle>Add liquidity to a UniswapV4 pool on Base Sepolia and Ethereum Sepolia</CardTitle>
         <CardDescription>Cross-chain liquidity provision in a single interaction.</CardDescription>
       </CardHeader>
+        <form onSubmit={submit}>
       <CardContent>
             <StrategyPieChart />
-        <form>
           <div className="grid w-full items-center gap-4 mt-4">
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="contract-address">Contract Address</Label>
-              <Input id="contract-address" placeholder="0x..." disabled value={chainId ? chainIdToHookContractAddress[chainId] : chainIdToHookContractAddress[baseSepolia.id]}/>
+              <Input id="contract-address" name="contract-address" placeholder="0x..." disabled value={chainId ? chainIdToHookContractAddress[chainId] : chainIdToHookContractAddress[baseSepolia.id]}/>
             </div>
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="strategy">Strategy</Label>
@@ -96,26 +99,26 @@ export default function Home() {
             </div>
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="tickLower">Tick Lower</Label>
-              <Input id="tickLower" placeholder="0" />
+              <Input id="tickLower" name="tickLower" placeholder="0" />
             </div>
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="tickUpper">Tick Upper</Label>
-              <Input id="tickUpper" placeholder="0" />
+              <Input id="tickUpper" name="tickUpper" placeholder="0" />
             </div>
             <div className="flex flex-col space-y-1.5">
               <Label htmlFor="liquidity">Liquidity</Label>
-              <Input id="liquidity" placeholder="0" />
+              <Input id="liquidity" name="liquidity" placeholder="0" />
             </div>
           </div>
-        </form>
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button variant="outline">Cancel</Button>
-        <Button disabled={isPending}>Deploy</Button>
+        <Button disabled={isPending} type='submit'>Deploy</Button>
         {hash && <div>Transaction Hash: {hash}</div>}
       {isConfirming && <div>Waiting for confirmation...</div>}
       {isConfirmed && <div>Transaction confirmed.</div>}
       </CardFooter>
+        </form>
     </Card>
         
       </main>
