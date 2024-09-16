@@ -61,10 +61,12 @@ contract CCLOHookScript is Script {
         // ----------------------------- //
         // Deploy the hook using CREATE2 //
         // ----------------------------- //
-        vm.broadcast();
+        vm.startBroadcast();
         CCLOHook hook =
             new CCLOHook{salt: salt}(manager, authorizedUser, BASE_SEPOLIA_CHAIN_ID, BASE_SEPOLIA_CCIP_ROUTER);
         require(address(hook) == hookAddress, "CCLOHookScript: Base Sepolia hook address mismatch");
+        console.log("Hook address: ", address(hook));
+        vm.stopBroadcast();
 
         //        hook.addStrategy(poolId, 1, chainIds, percentages, selectors, hooks);
     }

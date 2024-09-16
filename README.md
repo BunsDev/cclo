@@ -26,6 +26,31 @@ A simple way to add liquidity to Uniswap V4 pools on multiple chains using Unisw
 
 To be added.
 
+## Deployment
+
+### Hook Addresses
+
+| Chain ID | Hook Address |
+| -------- | ------------ |
+| 84532    | 0x696907c68D922c289582dA6c35E4c49E3df44800 |
+| 11155111 | 0x92A1Fd49D8A7e6ecf3414754257bBF7652750800 |
+
+### Pool Ids
+
+
+| Chain ID | Pool Id | Token0 | Token1 |
+| -------- | ------- | ------ | ------ |
+| 84532    | 0x7f19cbf62583730e067aeefeb4db801b382ab96579a77a223fc5f3e7738f72a2 | 0x036CbD53842c5426634e7929541eC2318f3dCF7e | 0x88A2d74F47a237a62e7A51cdDa67270CE381555e |
+| 11155111 | 0x33736e913fc79be0466f7267344eb4fa5fa66d03c3562c8ccf6bd7f883c97146 | 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238 | 0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05 |
+
+### Deploying the Hook
+
+To deploy the hook, you can use the `DeployCCLOHookTo{chain}.s.sol` scripts.
+
+### Deploying the Pool
+
+To deploy the pool, you can use the `AddPoolsTo{chain}.s.sol` scripts.
+
 ## Future Improvements
 
 #### Just-in-time (JIT) liquidity provision for swaps:

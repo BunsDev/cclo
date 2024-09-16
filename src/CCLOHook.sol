@@ -261,9 +261,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
         );
     }
 
-    event Log(uint256 amount0, uint256 amount1);
-    event Log2(string message);
-
     function _unlockCallback(bytes calldata rawData) internal override returns (bytes memory) {
         CallbackData memory data = abi.decode(rawData, (CallbackData));
         PoolKey memory key = data.key;
@@ -295,8 +292,6 @@ contract CCLOHook is CCIPReceiver, BaseHook {
                     (uint256 amount0, uint256 amount1) =
                         _calculateTokenAmounts(params, liquidityAmounts[i], sqrtPriceX96);
 
-                    emit Log(amount0, amount1);
-                    emit Log2("Amount0");
                     params.liquidityDelta -= int256(uint256(liquidityAmounts[i]));
                     _transferCrossChain(
                         sender,

@@ -29,6 +29,9 @@ contract CCLOHookScript is Script {
     uint256 BASE_SEPOLIA_CHAIN_ID = 84532;
     uint256 ETH_SEPOLIA_CHAIN_ID = 11155111;
 
+    uint64 constant BASE_SEPOLIA_CHAIN_SELECTOR = 10344971235874465080;
+    uint64 constant ETH_SEPOLIA_CHAIN_SELECTOR = 16015286601757825753;
+
     //////////////////////////////////////////////////////////////
     // CCIP related values
     //////////////////////////////////////////////////////////////
@@ -64,26 +67,44 @@ contract CCLOHookScript is Script {
     uint160 constant SQRT_PRICE_1_1 = 79228162514264337593543950336;
     bytes constant ZERO_BYTES = new bytes(0);
 
+    bytes32 constant BASE_SEPOLIA_POOL_ID = 0xbf49515d46810841973e073336d7c8730a62cd91736e1102110e0dea1bf386e4;
+    bytes32 constant ETH_SEPOLIA_POOL_ID = 0x848f63ece887a05062748a0304a89547a85d329c448da27760bab6243fa54087;
+
     function setUp() public {}
 
     function run() public {
-        address token0 = BASE_SEPOLIA_TOKEN0;
-        address token1 = BASE_SEPOLIA_TOKEN1;
-
-        IPoolManager manager = IPoolManager(BASE_SEPOLIA_POOL_MANAGER);
-        CCLOHook hook = CCLOHook(CCLO_HOOK_ADDRESS_BASE_SEPOLIA);
+        address token0 = ETH_SEPOLIA_TOKEN0;
+        address token1 = ETH_SEPOLIA_TOKEN1;
 
         Currency currency0 = Currency.wrap(address(token0));
         Currency currency1 = Currency.wrap(address(token1));
 
-        PoolKey memory key = PoolKey(currency0, currency1, 3000, 60, IHooks(CCLO_HOOK_ADDRESS_BASE_SEPOLIA));
+        CCLOHook hook = CCLOHook(CCLO_HOOK_ADDRESS_ETH_SEPOLIA);
+
+        PoolKey memory key = PoolKey(currency0, currency1, 3000, 60, IHooks(CCLO_HOOK_ADDRESS_ETH_SEPOLIA));
         PoolId id = PoolIdLibrary.toId(key);
         bytes32 idBytes = PoolId.unwrap(id);
+        //        PoolId id2 = PoolIdLibrary.wrap(BASE_SEPOLIA_POOL_ID);
 
-        console.log("Pool ID Below");
-        console.logBytes32(bytes32(idBytes));
+        uint256[] memory chainIds = new uint256[](2);
+        chainIds[0] = BASE_SEPOLIA_CHAIN_ID;
+        chainIds[1] = ETH_SEPOLIA_CHAIN_ID;
+        uint256[] memory percentages = new uint256[](2);
+        percentages[0] = 40;
+        percentages[1] = 60;
+        uint64[] memory selectors = new uint64[](2);
+        selectors[0] = BASE_SEPOLIA_CHAIN_SELECTOR;
+        selectors[1] = ETH_SEPOLIA_CHAIN_SELECTOR;
 
-        vm.broadcast();
-        manager.initialize(key, SQRT_PRICE_1_1, ZERO_BYTES);
+        address[] memory hooks = new address[](2);
+        hooks[0] = CCLO_HOOK_ADDRESS_BASE_SEPOLIA;
+        hooks[1] = CCLO_HOOK_ADDRESS_ETH_SEPOLIA;
+
+        console.log("Hook address: ", CCLO_HOOK_ADDRESS_ETH_SEPOLIA);
+        console.log("Hook address: ", address(hook));
+
+        vm.startBroadcast();
+        hook.addStrategy(id, 1, chainIds, percentages, selectors, hooks);
+        vm.stopBroadcast();
     }
 }
