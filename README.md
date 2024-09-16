@@ -24,7 +24,39 @@ A simple way to add liquidity to Uniswap V4 pools on multiple chains using Unisw
 
 ## Example sequence
 
-To be added.
+### 1. User Initiates Liquidity Provision:
+- A user interacts with the CCLO hook on Chain A (e.g., Sepolia) to add liquidity.
+- The user specifies the total amount of liquidity and the desired distribution across chains (e.g., 40% on Chain A, 60% on Chain B).
+### 2. CCLO Processes the Request:
+- The CCLO hook on Chain A receives the request and tokens from the user.
+- It calculates the amount of liquidity to be added locally and the amount to be sent cross-chain.
+### 3. Local Liquidity Addition:
+- The CCLO hook adds the designated portion of liquidity to the local Uniswap V4 pool on Chain A.
+### 4. Cross-Chain Liquidity Transfer:
+- For the remaining liquidity, the CCLO hook prepares a cross-chain message using Chainlink's CCIP.
+- This message includes details such as token addresses, amounts, and pool parameters.
+### 5. CCIP Message Transmission:
+- The CCIP router on Chain A sends the message to Chain B (e.g., Base Goerli).
+- The message, along with the tokens, is transmitted across chains.
+### 6. Receiving on Destination Chain:
+- The CCLO hook on Chain B receives the CCIP message.
+- It extracts the liquidity details and tokens from the message.
+### 7. Remote Liquidity Addition:
+- The CCLO hook on Chain B adds the received liquidity to the corresponding Uniswap V4 pool on Chain B.
+### 8. Completion and Confirmation:
+- The liquidity is now successfully split across both chains according to the user's specified strategy
+
+## Tests
+```
+test
+├── CCLOHook.ComplexStrategy.t.sol
+├── CCLOHook.SimpleStrategy.t.sol
+└── CrossChainFunctionality.t.sol
+```
+
+Tests are passing and each test files deals with a specific scenario and part of the hook.
+
+![Test Sequence](./tests.png)
 
 ## Deployment
 
@@ -62,3 +94,12 @@ To deploy the pool, you can use the `AddPoolsTo{chain}.s.sol` scripts.
 
 - Due to the time limitations of the hookathon, in our demo, we demonstrate the ability to provide liquidity in a fix split across 2 chains.
 - More complex strategies for sharing liquidity can be adopted so users have a wider selection. Further, liquidity sharing can be more dynamic and actively balanced by others e.g. Eigenlayer AVS
+
+#### Dynamic Strategies:
+
+- Due to the time limitations of the hookathon, initially we planned to add AVS to add strategies to Hook based on the volume of the sibling pools.
+- However, we realized that this is not possible due to the time limitations of the hookathon.
+
+#### Removing Liquidity Cross-Chain:
+
+- Currently, we are not able to remove liquidity cross-chain. Users can only remove liquidity on the chain they are on.
