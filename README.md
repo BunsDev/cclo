@@ -16,7 +16,8 @@ A simple way to add liquidity to Uniswap V4 pools on multiple chains using Unisw
 - Uniswap v4 introduces hooks where we can run arbitrary logic before and after different actions such as a swap, or modification of liquidity.
 - CCLO is a hook contract designed to allow chain abstraction and greater sharing of liquidity across chains by providing a seamless integration of multiple chains behind the scenes.
 
-**Users can provide liquidity across multiple chains simply by interacting with a single hook contract on one chain.**
+**Users can provide liquidity across multiple chains simply by interacting with a single hook contract on one chain.
+CCLO is designed to work seamlessly with two or more chains. When a user adds liquidity from one chain, it's automatically distributed to other connected chains based on the specified strategy. This multi-chain capability allows for flexible and efficient liquidity management across various blockchain networks**
 
 ## CCLO Architecture
 
